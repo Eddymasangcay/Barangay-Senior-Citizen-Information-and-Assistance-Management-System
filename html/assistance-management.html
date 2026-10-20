@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#3D007A">
+  <script>try{var __t=localStorage.getItem('bscims_theme');if(__t)document.documentElement.setAttribute('data-theme',__t);}catch(e){}</script>
+  <title>Assistance Management | BSCIAMS</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" referrerpolicy="no-referrer">
+  <link rel="stylesheet" href="../css/global.css">
+  <link rel="stylesheet" href="../css/assistance-management.css">
+
+  <script src="../js/global.js" defer></script>
+</head>
+<body data-page="assistance">
+  <a class="skip-link" href="#main">Skip to main content</a>
+
+  <div class="app">
+    <aside class="sidebar" id="sidebar" aria-label="Sidebar"></aside>
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <div class="main">
+      <header class="topbar" id="topbar"></header>
+
+      <main class="content" id="main" tabindex="-1">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Assistance Management</h1>
+            <p class="page-subtitle">Allocate aid, track approvals, and review each resident's assistance history.</p>
+          </div>
+          <div class="page-actions">
+            <button type="button" class="btn btn--secondary" id="exportAssistance" data-perm="report.export"><i class="fa-solid fa-file-csv" aria-hidden="true"></i>Export CSV</button>
+            <button type="button" class="btn btn--primary" id="newRequestBtn" data-perm="assistance.write"><i class="fa-solid fa-plus" aria-hidden="true"></i>New request</button>
+          </div>
+        </div>
+
+        <section class="grid grid--4 mb-4" aria-label="Assistance summary">
+          <div class="card mini-stat">
+            <span class="mini-stat__icon tone-pending"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i></span>
+            <div><p class="mini-stat__label">Pending review</p><p class="mini-stat__value" id="asPending">—</p></div>
+          </div>
+          <div class="card mini-stat">
+            <span class="mini-stat__icon tone-approved"><i class="fa-solid fa-circle-check" aria-hidden="true"></i></span>
+            <div><p class="mini-stat__label">Approved, awaiting release</p><p class="mini-stat__value" id="asApproved">—</p></div>
+          </div>
+          <div class="card mini-stat">
+            <span class="mini-stat__icon tone-violet"><i class="fa-solid fa-hand-holding-dollar" aria-hidden="true"></i></span>
+            <div><p class="mini-stat__label">Total released</p><p class="mini-stat__value" id="asReleased">—</p></div>
+          </div>
+          <div class="card mini-stat">
+            <span class="mini-stat__icon tone-alert"><i class="fa-solid fa-ban" aria-hidden="true"></i></span>
+            <div><p class="mini-stat__label">Denied</p><p class="mini-stat__value" id="asDenied">—</p></div>
+          </div>
+        </section>
+
+        <section class="card" aria-labelledby="trackerHeading">
+          <header class="card__header">
+            <div>
+              <h2 class="card__title" id="trackerHeading">Status tracker</h2>
+              <p class="card__subtitle">Approve, deny, and release assistance requests</p>
+            </div>
+            <div class="assist-filters">
+              <div class="input-icon">
+                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                <label for="asSearch" class="sr-only">Search requests</label>
+                <input class="input input--sm" type="search" id="asSearch" placeholder="Request ID, resident, purpose…">
+              </div>
+              <label for="asType" class="sr-only">Filter by type</label>
+              <select class="select select--sm" id="asType" data-options="aidTypes"><option value="">All types</option></select>
+            </div>
+          </header>
+
+          <ol class="assist-tracker" aria-label="Assistance lifecycle">
+            <li class="assist-tracker__step assist-tracker__step--pending">
+              <span class="assist-tracker__dot" aria-hidden="true"></span>
+              <span class="assist-tracker__label">Pending</span>
+              <span class="assist-tracker__hint">Awaiting review</span>
+            </li>
+            <li class="assist-tracker__step assist-tracker__step--approved">
+              <span class="assist-tracker__dot" aria-hidden="true"></span>
+              <span class="assist-tracker__label">Approved</span>
+              <span class="assist-tracker__hint">Ready for release</span>
+            </li>
+            <li class="assist-tracker__step assist-tracker__step--distributed">
+              <span class="assist-tracker__dot" aria-hidden="true"></span>
+              <span class="assist-tracker__label">Distributed</span>
+              <span class="assist-tracker__hint">Aid released to resident</span>
+            </li>
+          </ol>
+
+          <div class="tabs" id="statusTabs" role="tablist" aria-label="Filter by status">
+            <button type="button" class="tab is-active" role="tab" aria-selected="true" data-status="">All <span class="tab__count">0</span></button>
+            <button type="button" class="tab" role="tab" aria-selected="false" data-status="Pending"><i class="fa-regular fa-clock" aria-hidden="true"></i>Pending <span class="tab__count">0</span></button>
+            <button type="button" class="tab" role="tab" aria-selected="false" data-status="Approved"><i class="fa-regular fa-circle-check" aria-hidden="true"></i>Approved <span class="tab__count">0</span></button>
+            <button type="button" class="tab" role="tab" aria-selected="false" data-status="Released"><i class="fa-solid fa-hand-holding-dollar" aria-hidden="true"></i>Released <span class="tab__count">0</span></button>
+            <button type="button" class="tab" role="tab" aria-selected="false" data-status="Denied"><i class="fa-solid fa-ban" aria-hidden="true"></i>Denied <span class="tab__count">0</span></button>
+          </div>
+
+          <div class="table-wrap table-wrap--sticky">
+            <table class="table table--sticky assist-table">
+              <caption class="sr-only">Assistance requests</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Request</th>
+                  <th scope="col">Beneficiary</th>
+                  <th scope="col">Type</th>
+                  <th scope="col">Amount</th>
+                  <th scope="col">Requested</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Handled by</th>
+                  <th scope="col" class="actions table__actions"><span class="sr-only">Actions</span></th>
+                </tr>
+              </thead>
+              <tbody id="requestBody"></tbody>
+            </table>
+          </div>
+          <nav class="pagination" id="requestPagination" aria-label="Requests pagination"></nav>
+        </section>
+
+        <section class="card mt-6" id="historyCard" aria-labelledby="historyHeading">
+          <header class="card__header">
+            <div>
+              <h2 class="card__title" id="historyHeading">Resident assistance history</h2>
+              <p class="card__subtitle">All aid requested and received by a senior citizen</p>
+            </div>
+            <div class="assist-filters">
+              <label for="historySenior" class="sr-only">Select resident</label>
+              <select class="select select--sm history-select" id="historySenior"><option value="">Select a resident…</option></select>
+              <button type="button" class="btn btn--soft btn--sm" id="historyNewBtn"><i class="fa-solid fa-plus" aria-hidden="true"></i>File request</button>
+            </div>
+          </header>
+          <div class="history-summary" id="historySummary"></div>
+          <div class="table-wrap">
+            <table class="table">
+              <caption class="sr-only">Assistance history for the selected resident</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Request</th>
+                  <th scope="col">Type</th>
+                  <th scope="col">Purpose</th>
+                  <th scope="col">Amount</th>
+                  <th scope="col">Requested</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Handled by</th>
+                </tr>
+              </thead>
+              <tbody id="historyBody"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <!-- New request -->
+  <div class="modal" id="requestModal" aria-hidden="true">
+    <div class="modal__backdrop" data-close></div>
+    <form class="modal__dialog" id="requestForm" role="dialog" aria-modal="true" aria-labelledby="requestModalTitle" novalidate>
+      <header class="modal__header">
+        <div>
+          <h2 class="modal__title" id="requestModalTitle">New assistance request</h2>
+          <p class="modal__subtitle">Requests start as pending until reviewed by an approver.</p>
+        </div>
+        <button type="button" class="icon-btn" data-close aria-label="Close dialog"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+      </header>
+      <div class="modal__body">
+        <div class="form-grid">
+          <div class="field full">
+            <label class="label" for="reqSenior">Beneficiary <span class="req">*</span></label>
+            <select class="select" id="reqSenior" name="seniorId" required><option value="">Select a senior citizen…</option></select>
+            <small class="field__error"></small>
+          </div>
+          <div class="senior-summary full" id="reqSeniorInfo" hidden></div>
+          <div class="field">
+            <label class="label" for="reqType">Assistance type <span class="req">*</span></label>
+            <select class="select" id="reqType" name="type" data-options="aidTypes" required></select>
+            <small class="field__error"></small>
+          </div>
+          <div class="field">
+            <label class="label" for="reqAmount">Amount / value (₱) <span class="req">*</span></label>
+            <input class="input mono" type="number" id="reqAmount" name="amount" required min="1" max="100000" step="1" placeholder="0">
+            <small class="field__error"></small>
+          </div>
+          <div class="alert alert--pending full" id="reqRecentAlert" hidden>
+            <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+            <div><strong>Recent request on file</strong><span id="reqRecentText"></span></div>
+          </div>
+          <div class="field full">
+            <label class="label" for="reqPurpose">Purpose <span class="req">*</span></label>
+            <input class="input" id="reqPurpose" name="purpose" required maxlength="140" placeholder="e.g. Purchase of maintenance medicines">
+            <small class="field__error"></small>
+          </div>
+          <div class="field full">
+            <label class="label" for="reqRemarks">Remarks</label>
+            <textarea class="textarea" id="reqRemarks" name="remarks" rows="3" maxlength="300" placeholder="Supporting documents submitted, referral notes, etc."></textarea>
+          </div>
+        </div>
+      </div>
+      <footer class="modal__footer">
+        <button type="button" class="btn btn--secondary" data-close>Cancel</button>
+        <button type="submit" class="btn btn--primary"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i> Submit request</button>
+      </footer>
+    </form>
+  </div>
+
+  <!-- Request detail -->
+  <div class="modal" id="requestDetailModal" aria-hidden="true">
+    <div class="modal__backdrop" data-close></div>
+    <div class="modal__dialog" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+      <header class="modal__header">
+        <div>
+          <h2 class="modal__title" id="detailTitle">Request</h2>
+          <p class="modal__subtitle" id="detailSubtitle"></p>
+        </div>
+        <button type="button" class="icon-btn" data-close aria-label="Close dialog"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+      </header>
+      <div class="modal__body" id="requestDetailBody"></div>
+      <footer class="modal__footer" id="requestDetailFooter"></footer>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#3D007A">
+  <script>try{var __t=localStorage.getItem('bscims_theme');if(__t)document.documentElement.setAttribute('data-theme',__t);}catch(e){}</script>
+  <title>Senior Registry | BSCIAMS</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" referrerpolicy="no-referrer">
+  <link rel="stylesheet" href="../css/global.css">
+  <link rel="stylesheet" href="../css/senior-registry.css">
+
+  <script src="../js/global.js" defer></script>
+</head>
+<body data-page="registry">
+  <a class="skip-link" href="#main">Skip to main content</a>
+
+  <div class="app">
+    <aside class="sidebar" id="sidebar" aria-label="Sidebar"></aside>
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <div class="main">
+      <header class="topbar" id="topbar"></header>
+
+      <main class="content" id="main" tabindex="-1">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Senior Registry</h1>
+            <p class="page-subtitle">Register, search, and manage senior citizen profiles.</p>
+          </div>
+          <div class="page-actions">
+            <button type="button" class="btn btn--secondary" id="exportRegistry" data-perm="report.export" data-tooltip="Download the current filter as CSV"><i class="fa-solid fa-file-csv" aria-hidden="true"></i>Export CSV</button>
+            <button type="button" class="btn btn--primary" id="addSeniorBtn" data-perm="senior.write"><i class="fa-solid fa-user-plus" aria-hidden="true"></i>Register senior</button>
+          </div>
+        </div>
+
+        <section class="grid grid--4 mb-4" aria-label="Registry summary">
+          <div class="card mini-stat">
+            <span class="mini-stat__icon"><i class="fa-solid fa-address-book" aria-hidden="true"></i></span>
+            <div><p class="mini-stat__label">Total records</p><p class="mini-stat__value" id="regTotal">—</p></div>
+          </div>
+          <div class="card mini-stat">
+            <span class="mini-stat__icon tone-approved"><i class="fa-solid fa-user-check" aria-hidden="true"></i></span>
+            <div><p class="mini-stat__label">Active seniors</p><p class="mini-stat__value" id="regActive">—</p></div>
+          </div>
+          <div class="card mini-stat">
+            <span class="mini-stat__icon tone-info"><i class="fa-solid fa-wheelchair" aria-hidden="true"></i></span>
+            <div><p class="mini-stat__label">PWD seniors</p><p class="mini-stat__value" id="regPwd">—</p></div>
+          </div>
+          <div class="card mini-stat">
+            <span class="mini-stat__icon tone-pending"><i class="fa-solid fa-hand-holding-heart" aria-hidden="true"></i></span>
+            <div><p class="mini-stat__label">Indigent seniors</p><p class="mini-stat__value" id="regIndigent">—</p></div>
+          </div>
+        </section>
+
+        <section class="card registry-card" aria-labelledby="registryHeading">
+          <header class="card__header">
+            <div>
+              <h2 class="card__title" id="registryHeading">Senior citizens</h2>
+              <p class="card__subtitle" id="registryCount">Loading…</p>
+            </div>
+          </header>
+
+          <form class="filter-bar registry-filters" id="registryFilters" role="search" aria-label="Filter seniors">
+            <div class="field field--grow">
+              <label class="label" for="fSearch">Search</label>
+              <div class="input-icon">
+                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                <input class="input" type="search" id="fSearch" name="q" placeholder="Name, OSCA ID, address, contact…">
+              </div>
+            </div>
+            <div class="field">
+              <label class="label" for="fPurok">Purok</label>
+              <select class="select" id="fPurok" name="purok" data-options="puroks"><option value="">All puroks</option></select>
+            </div>
+            <div class="field">
+              <label class="label" for="fSex">Sex</label>
+              <select class="select" id="fSex" name="sex">
+                <option value="">All</option>
+                <option>Female</option>
+                <option>Male</option>
+              </select>
+            </div>
+            <div class="field">
+              <label class="label" for="fAge">Age bracket</label>
+              <select class="select" id="fAge" name="age" data-options="ageBrackets"><option value="">All ages</option></select>
+            </div>
+            <div class="field">
+              <label class="label" for="fPension">Pension</label>
+              <select class="select" id="fPension" name="pension" data-options="pension"><option value="">All types</option></select>
+            </div>
+            <div class="field">
+              <label class="label" for="fStatus">Status</label>
+              <select class="select" id="fStatus" name="status" data-options="seniorStatus"><option value="">All statuses</option></select>
+            </div>
+            <button type="button" class="btn btn--ghost registry-filters__reset" id="registryReset"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i>Reset</button>
+          </form>
+
+          <div class="table-wrap table-wrap--sticky">
+            <table class="table table--sticky registry-table" id="registryTable">
+              <caption class="sr-only">Registered senior citizens</caption>
+              <thead>
+                <tr>
+                  <th scope="col" class="table__select">
+                    <label class="table-check">
+                      <span class="sr-only">Select all on this page</span>
+                      <input type="checkbox" id="registrySelectAll">
+                    </label>
+                  </th>
+                  <th scope="col" aria-sort="none"><button type="button" class="th-sort" data-sort="name">Senior citizen <i class="fa-solid fa-arrows-up-down" aria-hidden="true"></i></button></th>
+                  <th scope="col" aria-sort="none"><button type="button" class="th-sort" data-sort="age">Age / Sex <i class="fa-solid fa-arrows-up-down" aria-hidden="true"></i></button></th>
+                  <th scope="col" aria-sort="none"><button type="button" class="th-sort" data-sort="purok">Purok <i class="fa-solid fa-arrows-up-down" aria-hidden="true"></i></button></th>
+                  <th scope="col">Pension</th>
+                  <th scope="col">Tags</th>
+                  <th scope="col">Status</th>
+                  <th scope="col" aria-sort="descending"><button type="button" class="th-sort" data-sort="registeredAt">Registered <i class="fa-solid fa-arrow-down" aria-hidden="true"></i></button></th>
+                  <th scope="col" class="actions table__actions"><span class="sr-only">Actions</span></th>
+                </tr>
+              </thead>
+              <tbody id="registryBody">
+                <tr>
+                  <td colspan="9">
+                    <div class="skeleton-card">
+                      <span class="skeleton skeleton--avatar-lg"></span>
+                      <div class="skeleton-row__body" style="flex:1">
+                        <span class="skeleton skeleton--title"></span>
+                        <span class="skeleton skeleton--text-sm"></span>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <nav class="pagination" id="registryPagination" aria-label="Registry pagination"></nav>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <!-- Register / edit senior -->
+  <div class="modal modal--lg" id="seniorModal" aria-hidden="true">
+    <div class="modal__backdrop" data-close></div>
+    <form class="modal__dialog" id="seniorForm" role="dialog" aria-modal="true" aria-labelledby="seniorModalTitle" novalidate>
+      <header class="modal__header">
+        <div>
+          <h2 class="modal__title" id="seniorModalTitle">Register senior citizen</h2>
+          <p class="modal__subtitle" id="seniorModalSubtitle">All fields marked * are required.</p>
+        </div>
+        <button type="button" class="icon-btn" data-close aria-label="Close dialog"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+      </header>
+
+      <div class="modal__body">
+        <div class="duplicate-alert" id="duplicateAlert" role="alert" hidden>
+          <span class="duplicate-alert__icon"><i class="fa-solid fa-user-group" aria-hidden="true"></i></span>
+          <div class="duplicate-alert__body">
+            <strong id="duplicateTitle">Possible duplicate record detected</strong>
+            <p id="duplicateText"></p>
+            <ul class="duplicate-alert__list" id="duplicateList"></ul>
+            <label class="checkbox duplicate-alert__ack">
+              <input type="checkbox" id="duplicateAck">
+              <span>I have verified this is a different person</span>
+            </label>
+          </div>
+        </div>
+
+        <fieldset class="form-section">
+          <legend class="form-section__title"><i class="fa-solid fa-camera" aria-hidden="true"></i>Portrait &amp; ID card</legend>
+          <div class="media-capture">
+            <div class="media-capture__col">
+              <p class="label">Profile photo</p>
+              <div class="cam-stage" id="regCamStage" data-state="idle">
+                <video class="cam-stage__video" id="regCamVideo" playsinline muted hidden></video>
+                <img class="cam-stage__photo" id="regPhotoPreview" alt="Captured senior portrait" hidden>
+                <div class="cam-stage__placeholder" id="regCamPlaceholder">
+                  <i class="fa-solid fa-camera" aria-hidden="true"></i>
+                  <span>Use the webcam to capture a 3:4 ID portrait</span>
+                </div>
+              </div>
+              <div class="media-capture__actions">
+                <button type="button" class="btn btn--soft" id="regCamStart"><i class="fa-solid fa-video" aria-hidden="true"></i>Open webcam</button>
+                <button type="button" class="btn btn--primary" id="regCamSnap" hidden><i class="fa-solid fa-camera" aria-hidden="true"></i>Capture</button>
+                <button type="button" class="btn btn--ghost" id="regCamRetake" hidden><i class="fa-solid fa-rotate-left" aria-hidden="true"></i>Retake</button>
+                <label class="btn btn--secondary">
+                  <i class="fa-solid fa-upload" aria-hidden="true"></i>Upload photo
+                  <input class="sr-only" type="file" id="regPhotoFile" accept="image/*" capture="user">
+                </label>
+                <button type="button" class="btn btn--ghost" id="regPhotoClear" hidden>Remove</button>
+              </div>
+              <input type="hidden" name="photo" id="regPhoto">
+              <small class="field__hint">Camera access needs localhost or HTTPS. Photos are compressed before saving.</small>
+            </div>
+
+            <div class="media-capture__col">
+              <p class="label">Import Senior Citizen ID</p>
+              <div class="id-import" id="regIdDrop" tabindex="0" role="button" aria-label="Import CR80 Senior Citizen ID card, 85.6 by 53.98 millimeters">
+                <div class="id-import__frame" data-empty="true">
+                  <img class="id-import__image" id="regIdPreview" alt="Imported CR80 Senior Citizen ID" hidden>
+                  <div class="id-import__empty" id="regIdEmpty">
+                    <i class="fa-solid fa-id-card" aria-hidden="true"></i>
+                    <strong>CR80 ID card</strong>
+                    <span>85.6 mm × 53.98 mm</span>
+                    <small>Drop a scan or click Import</small>
+                  </div>
+                </div>
+              </div>
+              <div class="media-capture__actions">
+                <label class="btn btn--secondary">
+                  <i class="fa-solid fa-file-import" aria-hidden="true"></i>Import ID card
+                  <input class="sr-only" type="file" id="regIdFile" accept="image/*">
+                </label>
+                <button type="button" class="btn btn--ghost" id="regIdClear" hidden>Remove ID</button>
+              </div>
+              <input type="hidden" name="idCardImage" id="regIdCard">
+              <small class="field__hint">Photograph or scan the physical OSCA ID. It is stored at CR80 size for reprinting.</small>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="form-section">
+          <legend class="form-section__title"><i class="fa-solid fa-id-card" aria-hidden="true"></i>Personal information</legend>
+          <div class="form-grid form-grid--3">
+            <div class="field">
+              <label class="label" for="sFirst">First name <span class="req">*</span></label>
+              <input class="input" id="sFirst" name="firstName" required maxlength="60" autocomplete="off">
+              <small class="field__error"></small>
+            </div>
+            <div class="field">
+              <label class="label" for="sMiddle">Middle name</label>
+              <input class="input" id="sMiddle" name="middleName" maxlength="60" autocomplete="off">
+              <small class="field__error"></small>
+            </div>
+            <div class="field">
+              <label class="label" for="sLast">Last name <span class="req">*</span></label>
+              <input class="input" id="sLast" name="lastName" required maxlength="60" autocomplete="off">
+              <small class="field__error"></small>
+            </div>
+            <div class="field">
+              <label class="label" for="sSex">Sex <span class="req">*</span></label>
+              <select class="select" id="sSex" name="sex" required>
+                <option value="">Select…</option>
+                <option>Female</option>
+                <option>Male</option>
+              </select>
+              <small class="field__error"></small>
+            </div>
+            <div class="field">
+              <label class="label" for="sBirth">Birthdate <span class="req">*</span></label>
+              <input class="input" type="date" id="sBirth" name="birthdate" required min="1900-01-01">
+              <small class="field__error"></small>
+            </div>
+            <div class="field">
+              <label class="label" for="ageDisplay">Age</label>
+              <input class="input" id="ageDisplay" readonly tabindex="-1" placeholder="Auto-computed">
+            </div>
+            <div class="field">
+              <label class="label" for="sCivil">Civil status <span class="req">*</span></label>
+              <select class="select" id="sCivil" name="civilStatus" data-options="civil" required><option value="">Select…</option></select>
+              <small class="field__error"></small>
+            </div>
+            <div class="field" id="statusField" hidden>
+              <label class="label" for="sStatus">Record status</label>
+              <select class="select" id="sStatus" name="status" data-options="seniorStatus"></select>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="form-section">
+          <legend class="form-section__title"><i class="fa-solid fa-location-dot" aria-hidden="true"></i>Contact &amp; address</legend>
+          <div class="form-grid form-grid--3">
+            <div class="field">
+              <label class="label" for="sPurok">Purok <span class="req">*</span></label>
+              <select class="select" id="sPurok" name="purok" data-options="puroks" required><option value="">Select…</option></select>
+              <small class="field__error"></small>
+            </div>
+            <div class="field" style="grid-column: span 2">
+              <label class="label" for="sAddress">Street address <span class="req">*</span></label>
+              <input class="input" id="sAddress" name="address" required maxlength="160" placeholder="House no., street">
+              <small class="field__error"></small>
+            </div>
+            <div class="field">
+              <label class="label" for="sContact">Mobile number</label>
+              <input class="input" id="sContact" name="contact" inputmode="numeric" pattern="^09\d{9}$" title="Use the 11-digit format 09XXXXXXXXX." placeholder="09XXXXXXXXX" maxlength="11">
+              <small class="field__error"></small>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="form-section">
+          <legend class="form-section__title"><i class="fa-solid fa-heart-pulse" aria-hidden="true"></i>Benefits &amp; health</legend>
+          <div class="form-grid form-grid--3">
+            <div class="field">
+              <label class="label" for="sOsca">OSCA ID <span class="req">*</span></label>
+              <input class="input mono" id="sOsca" name="oscaId" required pattern="^OSCA-\d{4}-\d{4}$" title="Format: OSCA-YYYY-0000" maxlength="14">
+              <small class="field__hint">Auto-generated; editable if pre-issued.</small>
+              <small class="field__error"></small>
+            </div>
+            <div class="field">
+              <label class="label" for="sPension">Pension type <span class="req">*</span></label>
+              <select class="select" id="sPension" name="pension" data-options="pension" required></select>
+              <small class="field__error"></small>
+            </div>
+            <div class="field">
+              <span class="label">Classification</span>
+              <div class="row row--wrap" style="min-height:40px">
+                <label class="checkbox"><input type="checkbox" name="pwd"><span>PWD</span></label>
+                <label class="checkbox"><input type="checkbox" name="indigent"><span>Indigent</span></label>
+              </div>
+            </div>
+            <div class="field full">
+              <span class="label">Health conditions</span>
+              <div class="check-grid" id="conditionsGrid"></div>
+            </div>
+          </div>
+        </fieldset>
+      </div>
+
+      <footer class="modal__footer">
+        <button type="button" class="btn btn--secondary" data-close>Cancel</button>
+        <button type="submit" class="btn btn--primary" id="seniorSubmit"><i class="fa-solid fa-user-plus" aria-hidden="true"></i> Register senior</button>
+      </footer>
+    </form>
+  </div>
+
+  <!-- Profile drawer -->
+  <div class="drawer" id="profileDrawer" aria-hidden="true">
+    <div class="drawer__backdrop" data-close></div>
+    <aside class="drawer__panel" role="dialog" aria-modal="true" aria-labelledby="profileDrawerTitle">
+      <header class="drawer__header">
+        <h2 class="modal__title" id="profileDrawerTitle">Senior profile</h2>
+        <button type="button" class="icon-btn" data-close aria-label="Close profile"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+      </header>
+      <div class="drawer__body" id="profileBody"></div>
+      <footer class="drawer__footer">
+        <button type="button" class="btn btn--ghost" id="profilePrintId" data-tooltip="Print this resident's Senior Citizen ID"><i class="fa-solid fa-id-card" aria-hidden="true"></i>Print ID</button>
+        <a class="btn btn--secondary" id="profileRequest" href="assistance-management.html" data-perm="assistance.write" data-perm-hide><i class="fa-solid fa-hand-holding-medical" aria-hidden="true"></i>New assistance</a>
+        <button type="button" class="btn btn--primary" id="profileEdit"><i class="fa-regular fa-pen-to-square" aria-hidden="true"></i>Edit profile</button>
+      </footer>
+    </aside>
+  </div>
+
+  <div class="bulk-bar" id="bulkBar" hidden role="toolbar" aria-label="Bulk actions for selected seniors">
+    <span class="bulk-bar__count" id="bulkCount">0 selected</span>
+    <div class="bulk-bar__actions">
+      <button type="button" class="bulk-bar__action" data-bulk="export" data-perm="report.export"><i class="fa-solid fa-file-csv" aria-hidden="true"></i>Export Selected</button>
+      <button type="button" class="bulk-bar__action bulk-bar__action--primary" data-bulk="print"><i class="fa-solid fa-id-card" aria-hidden="true"></i>Print Batch IDs</button>
+      <button type="button" class="bulk-bar__action" data-bulk="pension" data-perm="senior.write"><i class="fa-solid fa-peso-sign" aria-hidden="true"></i>Mark Pension Distributed</button>
+    </div>
+    <button type="button" class="bulk-bar__dismiss" data-bulk="clear" aria-label="Clear selection" data-tooltip="Clear selection"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+  </div>
+
+  <div class="id-print-sheet" id="idPrintSheet" hidden></div>
+</body>
+</html>

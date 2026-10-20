@@ -1,0 +1,161 @@
+/* ==========================================================================
+   assistance-management.css: assistance badges & resident history tables
+   ========================================================================== */
+
+/* Header filters --------------------------------------------------------- */
+.assist-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.assist-filters .input-icon { width: 240px; }
+.assist-filters .select { width: 160px; }
+.assist-filters .history-select { width: 300px; }
+
+/* Table ------------------------------------------------------------------ */
+.assist-table td { font-size: 13.5px; }
+.assist-table .actions .btn { margin-left: 4px; }
+
+.aid-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.aid-type i {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--primary-soft);
+  color: var(--primary-toxic-violet);
+  font-size: 12px;
+}
+
+/* Senior summary inside the request form */
+.senior-summary {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+}
+.senior-summary strong { display: block; font-size: 13.5px; }
+.senior-summary small { display: block; color: var(--text-muted); font-size: 12px; }
+
+.alert.full span { display: block; }
+
+/* Status tracker (stepper) ---------------------------------------------- */
+.status-tracker {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  counter-reset: step;
+}
+
+.status-tracker__step {
+  --step-color: var(--border-light);
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+.status-tracker__step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 15px;
+  left: calc(50% + 20px);
+  right: calc(-50% + 20px);
+  height: 2px;
+  border-radius: 2px;
+  background: var(--border-light);
+  transition: background-color 0.25s var(--ease);
+}
+.status-tracker__step.is-done:not(:last-child)::after { background: var(--status-approved); }
+
+.status-tracker__dot {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 2px solid var(--step-color);
+  border-radius: 50%;
+  background: var(--surface-white);
+  color: var(--text-muted);
+  font-size: 12px;
+  transition: var(--transition-fast);
+}
+.status-tracker__step:not(.is-done):not(.is-current) .status-tracker__dot i { font-size: 6px; }
+
+.status-tracker__step.is-done { --step-color: var(--status-approved); }
+.status-tracker__step.is-done .status-tracker__dot { background: var(--status-approved); color: #fff; }
+
+.status-tracker__step.is-current { --step-color: var(--primary-toxic-violet); }
+.status-tracker__step.is-current .status-tracker__dot {
+  background: var(--primary-toxic-violet);
+  color: #fff;
+  box-shadow: 0 0 0 4px var(--primary-ring);
+}
+.status-tracker__step--pending.is-current { --step-color: var(--status-pending); }
+.status-tracker__step--pending.is-current .status-tracker__dot { background: var(--status-pending); box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.2); }
+.status-tracker__step--denied.is-current { --step-color: var(--status-alert); }
+.status-tracker__step--denied.is-current .status-tracker__dot { background: var(--status-alert); box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.18); }
+
+.status-tracker__label { font-size: 12.5px; font-weight: 600; }
+.status-tracker__step small { font-size: 11.5px; color: var(--text-muted); }
+
+.profile-section__title {
+  margin-bottom: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* Request activity log */
+.request-log { display: flex; flex-direction: column; gap: 10px; }
+.request-log li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 13px;
+}
+.request-log li .badge { min-width: 88px; justify-content: center; }
+.request-log small { display: block; color: var(--text-muted); font-size: 12px; }
+
+/* Resident history summary ---------------------------------------------- */
+.history-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-bottom: 1px solid var(--border-light);
+}
+.history-summary:empty { display: none; }
+.history-summary__item { padding: 16px 22px; }
+.history-summary__item + .history-summary__item { border-left: 1px solid var(--border-light); }
+.history-summary__item span { display: block; font-size: 12px; color: var(--text-muted); }
+.history-summary__item strong { display: block; margin-top: 2px; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* Responsive ------------------------------------------------------------- */
+@media (max-width: 1023px) {
+  .assist-filters { width: 100%; }
+  .assist-filters .input-icon,
+  .assist-filters .history-select { flex: 1 1 220px; width: auto; }
+}
+
+@media (max-width: 639px) {
+  .assist-filters .select { flex: 1; width: auto; }
+  .history-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .history-summary__item { padding: 12px 16px; }
+  .history-summary__item:nth-child(3) { border-left: 0; }
+  .history-summary__item:nth-child(n + 3) { border-top: 1px solid var(--border-light); }
+  .status-tracker__label { font-size: 11.5px; }
+}

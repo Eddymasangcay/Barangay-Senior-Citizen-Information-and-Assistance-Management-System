@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#3D007A">
+  <script>try{var __t=localStorage.getItem('bscims_theme');if(__t)document.documentElement.setAttribute('data-theme',__t);}catch(e){}</script>
+  <title>Programs &amp; Events | BSCIAMS</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" referrerpolicy="no-referrer">
+  <link rel="stylesheet" href="../css/global.css">
+  <link rel="stylesheet" href="../css/program-management.css">
+
+  <script src="../js/global.js" defer></script>
+</head>
+<body data-page="programs">
+  <a class="skip-link" href="#main">Skip to main content</a>
+
+  <div class="app">
+    <aside class="sidebar" id="sidebar" aria-label="Sidebar"></aside>
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <div class="main">
+      <header class="topbar" id="topbar"></header>
+
+      <main class="content" id="main" tabindex="-1">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Programs &amp; Events</h1>
+            <p class="page-subtitle">Plan pension payouts, health missions, and community outreach for our seniors.</p>
+          </div>
+          <div class="page-actions">
+            <button type="button" class="btn btn--primary" id="addProgramBtn" data-perm="program.write"><i class="fa-solid fa-calendar-plus" aria-hidden="true"></i>New program</button>
+          </div>
+        </div>
+
+        <section class="grid grid--4 mb-4" aria-label="Program summary">
+          <div class="card mini-stat">
+            <span class="mini-stat__icon"><i class="fa-solid fa-layer-group" aria-hidden="true"></i></span>
+            <div><p class="mini-stat__label">Total programs</p><p class="mini-stat__value" id="pgTotal">—</p></div>
+          </div>
+          <div class="card mini-stat">
+            <span class="mini-stat__icon tone-info"><i class="fa-solid fa-calendar-day" aria-hidden="true"></i></span>
+            <div><p class="mini-stat__label">Upcoming</p><p class="mini-stat__value" id="pgUpcoming">—</p></div>
+          </div>
+          <div class="card mini-stat">
+            <span class="mini-stat__icon tone-approved"><i class="fa-solid fa-people-group" aria-hidden="true"></i></span>
+            <div><p class="mini-stat__label">Seniors reached</p><p class="mini-stat__value" id="pgReached">—</p></div>
+          </div>
+          <div class="card mini-stat">
+            <span class="mini-stat__icon tone-pending"><i class="fa-solid fa-flag-checkered" aria-hidden="true"></i></span>
+            <div><p class="mini-stat__label">Completed this year</p><p class="mini-stat__value" id="pgCompleted">—</p></div>
+          </div>
+        </section>
+
+        <div class="program-layout">
+          <section class="program-main" aria-labelledby="programListHeading">
+            <div class="card program-toolbar">
+              <div class="chip-group" id="programTypeChips" role="group" aria-label="Filter by program type">
+                <button type="button" class="chip is-active" data-type="" aria-pressed="true">All <span class="chip__count">0</span></button>
+                <button type="button" class="chip" data-type="Pension" aria-pressed="false"><i class="fa-solid fa-money-bill-wave" aria-hidden="true"></i>Pension <span class="chip__count">0</span></button>
+                <button type="button" class="chip" data-type="Health" aria-pressed="false"><i class="fa-solid fa-heart-pulse" aria-hidden="true"></i>Health <span class="chip__count">0</span></button>
+                <button type="button" class="chip" data-type="Outreach" aria-pressed="false"><i class="fa-solid fa-people-roof" aria-hidden="true"></i>Outreach <span class="chip__count">0</span></button>
+              </div>
+              <div class="program-toolbar__filters">
+                <div class="input-icon">
+                  <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                  <label for="programSearch" class="sr-only">Search programs</label>
+                  <input class="input input--sm" type="search" id="programSearch" placeholder="Search programs…">
+                </div>
+                <label for="programStatus" class="sr-only">Filter by status</label>
+                <select class="select select--sm" id="programStatus">
+                  <option value="">All statuses</option>
+                  <option>Upcoming</option>
+                  <option>Completed</option>
+                  <option>Cancelled</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="row row--between program-main__head">
+              <h2 class="card__title" id="programListHeading">Programs</h2>
+              <span class="muted small" id="programCount"></span>
+            </div>
+            <div class="program-grid" id="programGrid"></div>
+          </section>
+
+          <aside class="card program-aside" aria-labelledby="timelineHeading">
+            <header class="card__header">
+              <div>
+                <h2 class="card__title" id="timelineHeading">Event timeline</h2>
+                <p class="card__subtitle">Upcoming schedule at a glance</p>
+              </div>
+              <span class="icon-btn" aria-hidden="true"><i class="fa-regular fa-calendar"></i></span>
+            </header>
+            <div class="card__body" id="programTimeline"></div>
+          </aside>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Create / edit program -->
+  <div class="modal" id="programModal" aria-hidden="true">
+    <div class="modal__backdrop" data-close></div>
+    <form class="modal__dialog" id="programForm" role="dialog" aria-modal="true" aria-labelledby="programModalTitle" novalidate>
+      <header class="modal__header">
+        <div>
+          <h2 class="modal__title" id="programModalTitle">New program or event</h2>
+          <p class="modal__subtitle">Beneficiaries can be added after saving.</p>
+        </div>
+        <button type="button" class="icon-btn" data-close aria-label="Close dialog"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+      </header>
+      <div class="modal__body">
+        <div class="form-grid">
+          <div class="field full">
+            <label class="label" for="pTitle">Program title <span class="req">*</span></label>
+            <input class="input" id="pTitle" name="title" required maxlength="100" placeholder="e.g. Free Flu Vaccination Drive">
+            <small class="field__error"></small>
+          </div>
+          <div class="field">
+            <label class="label" for="pType">Category <span class="req">*</span></label>
+            <select class="select" id="pType" name="type" data-options="programTypes" required></select>
+            <small class="field__error"></small>
+          </div>
+          <div class="field">
+            <label class="label" for="pCapacity">Capacity <span class="req">*</span></label>
+            <input class="input" type="number" id="pCapacity" name="capacity" required min="1" max="1000" step="1">
+            <small class="field__error"></small>
+          </div>
+          <div class="field">
+            <label class="label" for="pDate">Date <span class="req">*</span></label>
+            <input class="input" type="date" id="pDate" name="date" required>
+            <small class="field__error"></small>
+          </div>
+          <div class="field">
+            <label class="label" for="pTime">Start time <span class="req">*</span></label>
+            <input class="input" type="time" id="pTime" name="time" required>
+            <small class="field__error"></small>
+          </div>
+          <div class="field full">
+            <label class="label" for="pVenue">Venue <span class="req">*</span></label>
+            <input class="input" id="pVenue" name="venue" required maxlength="120" placeholder="e.g. Barangay Health Center">
+            <small class="field__error"></small>
+          </div>
+          <div class="field full">
+            <label class="label" for="pDesc">Description <span class="req">*</span></label>
+            <textarea class="textarea" id="pDesc" name="description" required maxlength="400" rows="3" placeholder="What seniors should expect and bring"></textarea>
+            <small class="field__error"></small>
+          </div>
+        </div>
+      </div>
+      <footer class="modal__footer">
+        <button type="button" class="btn btn--secondary" data-close>Cancel</button>
+        <button type="submit" class="btn btn--primary" id="programSubmit"><i class="fa-solid fa-calendar-plus" aria-hidden="true"></i> Create program</button>
+      </footer>
+    </form>
+  </div>
+
+  <!-- Manage beneficiaries -->
+  <div class="modal modal--lg" id="beneficiaryModal" aria-hidden="true">
+    <div class="modal__backdrop" data-close></div>
+    <div class="modal__dialog" role="dialog" aria-modal="true" aria-labelledby="benTitle">
+      <header class="modal__header">
+        <div>
+          <h2 class="modal__title" id="benTitle">Beneficiaries</h2>
+          <p class="modal__subtitle" id="benSubtitle"></p>
+        </div>
+        <button type="button" class="icon-btn" data-close aria-label="Close dialog"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+      </header>
+      <div class="modal__body">
+        <div class="ben-capacity">
+          <div class="row row--between">
+            <span class="label">Enrolled</span>
+            <strong class="mono" id="benCount">0 / 0</strong>
+          </div>
+          <div class="meter"><div class="meter__fill" id="benMeter" style="width:0%"></div></div>
+          <p class="alert alert--pending mt-2" id="benFull" hidden><i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i>Capacity reached. Remove a beneficiary or raise the capacity to add more.</p>
+        </div>
+
+        <div class="beneficiary-tags beneficiary-tags--editable" id="benTags" aria-live="polite"></div>
+
+        <div class="ben-add">
+          <div class="row row--between row--wrap">
+            <h3 class="profile-section__title" style="margin:0">Add from registry</h3>
+            <button type="button" class="btn btn--soft btn--sm" id="benEligible"></button>
+          </div>
+          <div class="input-icon mt-2">
+            <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+            <label for="benSearch" class="sr-only">Search active seniors</label>
+            <input class="input" type="search" id="benSearch" placeholder="Search by name, OSCA ID, or purok…">
+          </div>
+          <ul class="ben-results" id="benResults"></ul>
+        </div>
+      </div>
+      <footer class="modal__footer">
+        <button type="button" class="btn btn--secondary" data-close>Cancel</button>
+        <button type="button" class="btn btn--primary" id="benSave"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Save beneficiaries</button>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>

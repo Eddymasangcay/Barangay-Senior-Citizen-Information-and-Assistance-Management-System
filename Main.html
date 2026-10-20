@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Sign in to the Barangay Senior Citizen Information and Assistance Management System.">
+  <meta name="theme-color" content="#3D007A">
+  <script>try{var __t=localStorage.getItem('bscims_theme');if(__t)document.documentElement.setAttribute('data-theme',__t);}catch(e){}</script>
+  <title>Sign In | Barangay Senior Citizen Information and Assistance Management System</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" referrerpolicy="no-referrer">
+  <link rel="stylesheet" href="css/global.css">
+
+  <script src="js/global.js" defer></script>
+</head>
+<body class="auth" data-page="login">
+  <button type="button" class="theme-toggle theme-toggle--fixed" id="themeToggle" data-theme-toggle data-tooltip="Switch theme" data-tooltip-pos="down" aria-label="Switch theme">
+    <i class="fa-solid fa-sun" aria-hidden="true"></i>
+  </button>
+  <main class="auth__layout">
+    <section class="auth__brand" aria-labelledby="brandTitle">
+      <div class="brand brand--light">
+        <span class="brand__mark" aria-hidden="true"><i class="fa-solid fa-hand-holding-heart"></i></span>
+        <span class="brand__text">
+          <strong>BSCIAMS</strong>
+          <small>Barangay Senior Care</small>
+        </span>
+      </div>
+
+      <div class="auth__brand-copy">
+        <h1 id="brandTitle">Barangay Senior Citizen Information and Assistance Management System</h1>
+        <p>One secure place to register senior citizens, coordinate outreach programs, and track every peso of assistance delivered to our elders.</p>
+
+        <ul class="auth__features">
+          <li><span class="auth__feature-icon"><i class="fa-solid fa-id-card"></i></span>Centralized senior registry with duplicate detection</li>
+          <li><span class="auth__feature-icon"><i class="fa-solid fa-hand-holding-medical"></i></span>Transparent aid allocation and status tracking</li>
+          <li><span class="auth__feature-icon"><i class="fa-solid fa-chart-pie"></i></span>Demographic reports ready for export</li>
+        </ul>
+      </div>
+
+      <p class="auth__foot">&copy; <span data-year>2026</span> Barangay Senior Citizens Affairs Office</p>
+    </section>
+
+    <section class="auth__panel">
+      <form class="auth__form" id="loginForm" novalidate aria-labelledby="loginTitle">
+        <header class="auth__header">
+          <h2 id="loginTitle">Sign in</h2>
+          <p class="muted">Use your account credentials. Your role is assigned by the system, not chosen at login.</p>
+        </header>
+
+        <div class="alert alert--alert auth__alert" id="loginAlert" hidden>
+          <i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i>
+          <span></span>
+        </div>
+
+        <div class="field">
+          <label class="label" for="username">Username <span class="req" aria-hidden="true">*</span></label>
+          <div class="input-icon">
+            <i class="fa-regular fa-user" aria-hidden="true"></i>
+            <input class="input" id="username" name="username" type="text" autocomplete="username" placeholder="e.g. emasangcay" required minlength="3" spellcheck="false">
+          </div>
+          <small class="field__error"></small>
+        </div>
+
+        <div class="field">
+          <label class="label" for="password">Password <span class="req" aria-hidden="true">*</span></label>
+          <div class="input-icon">
+            <i class="fa-solid fa-lock" aria-hidden="true"></i>
+            <input class="input" id="password" name="password" type="password" autocomplete="current-password" placeholder="Enter your password" required minlength="8">
+            <button type="button" class="input-action" id="togglePassword" aria-label="Show password" aria-pressed="false">
+              <i class="fa-regular fa-eye" aria-hidden="true"></i>
+            </button>
+          </div>
+          <small class="field__error"></small>
+        </div>
+
+        <div class="auth__row">
+          <label class="checkbox">
+            <input type="checkbox" name="remember" checked>
+            <span>Keep me signed in</span>
+          </label>
+          <a href="#" class="link" id="forgotLink">Forgot password?</a>
+        </div>
+
+        <button class="btn btn--primary btn--block btn--lg" type="submit">
+          <span>Sign in</span>
+          <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
+        </button>
+
+        <dl class="auth__accounts">
+          <dt>Pre-built accounts</dt>
+          <dd><span>Eduardo Masangcay · Administrator</span><code>emasangcay / Admin@123</code></dd>
+          <dd><span>Jenzai Campilan · Administrator</span><code>jencampi / Admin@123</code></dd>
+          <dd><span>Jeziel Cabarse · Barangay Staff</span><code>jecab / Staff@123</code></dd>
+          <dd><span>Keith Morta · Barangay Staff</span><code>kmorta / Staff@123</code></dd>
+          <dd><span>Vincent Rosalita · Health Worker</span><code>vrosalita / Health@123</code></dd>
+        </dl>
+      </form>
+    </section>
+  </main>
+</body>
+</html>

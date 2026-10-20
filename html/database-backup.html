@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#3D007A">
+  <script>try{var __t=localStorage.getItem('bscims_theme');if(__t)document.documentElement.setAttribute('data-theme',__t);}catch(e){}</script>
+  <title>Backup &amp; Settings | BSCIAMS</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" referrerpolicy="no-referrer">
+  <link rel="stylesheet" href="../css/global.css">
+  <link rel="stylesheet" href="../css/database-backup.css">
+
+  <script src="../js/global.js" defer></script>
+</head>
+<body data-page="backup">
+  <a class="skip-link" href="#main">Skip to main content</a>
+
+  <div class="app">
+    <aside class="sidebar" id="sidebar" aria-label="Sidebar"></aside>
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <div class="main">
+      <header class="topbar" id="topbar"></header>
+
+      <main class="content" id="main" tabindex="-1">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Backup &amp; Settings</h1>
+            <p class="page-subtitle">Protect barangay records with regular backups and manage system preferences.</p>
+          </div>
+        </div>
+
+        <section class="grid grid--4 mb-4" aria-label="Database overview">
+          <div class="card mini-stat">
+            <span class="mini-stat__icon tone-approved"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i></span>
+            <div><p class="mini-stat__label">Last backup</p><p class="mini-stat__value" id="lastBackup">—</p><p class="small muted" id="lastBackupMeta"></p></div>
+          </div>
+          <div class="card mini-stat">
+            <span class="mini-stat__icon"><i class="fa-solid fa-hard-drive" aria-hidden="true"></i></span>
+            <div><p class="mini-stat__label">Database size</p><p class="mini-stat__value" id="dbSize">—</p><p class="small muted">Stored in this browser</p></div>
+          </div>
+          <div class="card mini-stat">
+            <span class="mini-stat__icon tone-info"><i class="fa-solid fa-table-list" aria-hidden="true"></i></span>
+            <div><p class="mini-stat__label">Records</p><p class="mini-stat__value" id="recordCount">—</p><p class="small muted" id="recordBreakdown"></p></div>
+          </div>
+          <div class="card mini-stat">
+            <span class="mini-stat__icon tone-pending"><i class="fa-solid fa-calendar-days" aria-hidden="true"></i></span>
+            <div><p class="mini-stat__label">Schedule</p><p class="small strong mt-2" id="nextBackup">—</p></div>
+          </div>
+        </section>
+
+        <div class="backup-layout">
+          <div class="stack">
+            <!-- Create backup -->
+            <section class="card" aria-labelledby="createHeading">
+              <header class="card__header">
+                <div>
+                  <h2 class="card__title" id="createHeading">Create backup</h2>
+                  <p class="card__subtitle">Download a complete JSON snapshot of all records and settings</p>
+                </div>
+              </header>
+              <div class="card__body">
+                <div class="storage">
+                  <div class="row row--between small">
+                    <span class="muted">Browser storage</span>
+                    <span class="muted" id="storageText"></span>
+                  </div>
+                  <div class="progress progress--thin" id="storageBar" role="progressbar" aria-label="Browser storage used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                    <div class="progress__fill" id="storageFill" style="width:0%"></div>
+                  </div>
+                </div>
+
+                <div class="backup-action">
+                  <div class="backup-action__icon"><i class="fa-solid fa-cloud-arrow-down" aria-hidden="true"></i></div>
+                  <div class="backup-action__text">
+                    <strong>Full database export</strong>
+                    <span class="muted small">Includes seniors, programs, assistance, audit logs, and settings.</span>
+                  </div>
+                  <button type="button" class="btn btn--primary" id="createBackupBtn" data-perm="backup.create"><i class="fa-solid fa-download" aria-hidden="true"></i>Back up now</button>
+                </div>
+
+                <div class="progress-wrap" id="backupProgress" hidden aria-live="polite">
+                  <div class="row row--between small">
+                    <span class="progress__label">Preparing…</span>
+                    <span class="progress__pct mono">0%</span>
+                  </div>
+                  <div class="progress" role="progressbar" aria-label="Backup progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                    <div class="progress__fill" style="width:0%"></div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- Restore -->
+            <section class="card" aria-labelledby="restoreHeading">
+              <header class="card__header">
+                <div>
+                  <h2 class="card__title" id="restoreHeading">Restore data</h2>
+                  <p class="card__subtitle">Replace current records with a previous backup file</p>
+                </div>
+                <span class="badge badge--alert badge--plain"><i class="fa-solid fa-user-shield" aria-hidden="true"></i>Administrator only</span>
+              </header>
+              <div class="card__body">
+                <label class="drop-zone" id="restoreDrop" for="restoreInput">
+                  <input type="file" id="restoreInput" accept=".json,application/json" class="sr-only" data-perm="backup.restore">
+                  <span class="drop-zone__icon"><i class="fa-solid fa-file-arrow-up" aria-hidden="true"></i></span>
+                  <strong>Drop a backup file here or <span class="link">browse</span></strong>
+                  <span class="muted small">Accepts .json files exported from this system</span>
+                </label>
+
+                <div class="restore-file alert" id="restoreFileInfo" hidden></div>
+
+                <div class="progress-wrap" id="restoreProgress" hidden aria-live="polite">
+                  <div class="row row--between small">
+                    <span class="progress__label">Preparing…</span>
+                    <span class="progress__pct mono">0%</span>
+                  </div>
+                  <div class="progress progress--alert" role="progressbar" aria-label="Restore progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                    <div class="progress__fill" style="width:0%"></div>
+                  </div>
+                </div>
+
+                <div class="row row--between row--wrap mt-4">
+                  <p class="small muted"><i class="fa-solid fa-circle-info" aria-hidden="true"></i> Create a fresh backup before restoring.</p>
+                  <button type="button" class="btn btn--danger" id="restoreBtn" data-perm="backup.restore" disabled><i class="fa-solid fa-rotate-left" aria-hidden="true"></i>Restore</button>
+                </div>
+              </div>
+            </section>
+
+            <!-- History -->
+            <section class="card" aria-labelledby="historyHeading">
+              <header class="card__header">
+                <div>
+                  <h2 class="card__title" id="historyHeading">Backup history</h2>
+                  <p class="card__subtitle">Most recent 12 backup operations</p>
+                </div>
+              </header>
+              <div class="table-wrap">
+                <table class="table">
+                  <caption class="sr-only">Backup history</caption>
+                  <thead>
+                    <tr>
+                      <th scope="col">Date</th>
+                      <th scope="col">Type</th>
+                      <th scope="col">Size</th>
+                      <th scope="col">Records</th>
+                      <th scope="col">Created by</th>
+                      <th scope="col">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="backupHistoryBody"></tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+
+          <div class="stack">
+            <!-- Settings -->
+            <section class="card" id="settings" aria-labelledby="settingsHeading">
+              <header class="card__header">
+                <div>
+                  <h2 class="card__title" id="settingsHeading">System settings</h2>
+                  <p class="card__subtitle">Backups, notifications, and security</p>
+                </div>
+              </header>
+              <form class="card__body settings-form" id="settingsForm" novalidate>
+                <p class="alert alert--info" id="settingsLocked" hidden><i class="fa-solid fa-lock" aria-hidden="true"></i>Only Administrators can change system settings.</p>
+
+                <h3 class="settings-group">Backups</h3>
+                <label class="switch-row">
+                  <span class="switch-row__text"><strong>Automatic backups</strong><small>Snapshot the database on a schedule at 2:00 AM</small></span>
+                  <span class="switch"><input type="checkbox" name="autoBackup" role="switch"><span class="switch__track" aria-hidden="true"></span></span>
+                </label>
+                <div class="settings-row">
+                  <label class="label" for="setFrequency">Backup frequency</label>
+                  <select class="select select--sm" id="setFrequency" name="backupFrequency">
+                    <option>Daily</option>
+                    <option>Weekly</option>
+                  </select>
+                </div>
+                <div class="settings-row">
+                  <label class="label" for="setRetention">Keep audit logs for</label>
+                  <select class="select select--sm" id="setRetention" name="retention">
+                    <option value="30">30 days</option>
+                    <option value="90">90 days</option>
+                    <option value="365">1 year</option>
+                  </select>
+                </div>
+
+                <h3 class="settings-group">Notifications</h3>
+                <label class="switch-row">
+                  <span class="switch-row__text"><strong>In-app notifications</strong><small>Pending requests, events, and birthdays</small></span>
+                  <span class="switch"><input type="checkbox" name="notifications" role="switch"><span class="switch__track" aria-hidden="true"></span></span>
+                </label>
+                <label class="switch-row">
+                  <span class="switch-row__text"><strong>Email alerts</strong><small>Send a daily digest to administrators</small></span>
+                  <span class="switch"><input type="checkbox" name="emailAlerts" role="switch"><span class="switch__track" aria-hidden="true"></span></span>
+                </label>
+
+                <h3 class="settings-group">Security</h3>
+                <label class="switch-row">
+                  <span class="switch-row__text"><strong>Two-factor authentication</strong><small>Require a one-time code at sign-in</small></span>
+                  <span class="switch"><input type="checkbox" name="twoFactor" role="switch"><span class="switch__track" aria-hidden="true"></span></span>
+                </label>
+                <div class="settings-row">
+                  <label class="label" for="setTimeout">Session timeout</label>
+                  <select class="select select--sm" id="setTimeout" name="sessionTimeout">
+                    <option value="15">15 minutes</option>
+                    <option value="30">30 minutes</option>
+                    <option value="60">1 hour</option>
+                    <option value="120">2 hours</option>
+                  </select>
+                </div>
+
+                <button type="submit" class="btn btn--primary btn--block mt-2" data-perm="settings.edit"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>Save settings</button>
+              </form>
+            </section>
+
+            <!-- Danger zone -->
+            <section class="card danger-zone" aria-labelledby="dangerHeading">
+              <header class="card__header">
+                <div>
+                  <h2 class="card__title" id="dangerHeading">Danger zone</h2>
+                  <p class="card__subtitle">Irreversible actions</p>
+                </div>
+              </header>
+              <div class="card__body">
+                <p class="small muted">Reset every record to the original demo dataset. Use this to start a fresh demonstration.</p>
+                <button type="button" class="btn btn--danger-soft btn--block mt-4" id="resetDataBtn" data-perm="data.reset"><i class="fa-solid fa-trash-arrow-up" aria-hidden="true"></i>Reset to demo data</button>
+              </div>
+            </section>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+</body>
+</html>

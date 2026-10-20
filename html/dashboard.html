@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#3D007A">
+  <script>try{var __t=localStorage.getItem('bscims_theme');if(__t)document.documentElement.setAttribute('data-theme',__t);}catch(e){}</script>
+  <title>Dashboard | BSCIAMS</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" referrerpolicy="no-referrer">
+  <link rel="stylesheet" href="../css/global.css">
+  <link rel="stylesheet" href="../css/dashboard.css">
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" defer></script>
+  <script src="../js/global.js" defer></script>
+  <script src="../js/dashboard-charts.js" defer></script>
+</head>
+<body data-page="dashboard">
+  <a class="skip-link" href="#main">Skip to main content</a>
+
+  <div class="app">
+    <aside class="sidebar" id="sidebar" aria-label="Sidebar"></aside>
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <div class="main">
+      <header class="topbar" id="topbar"></header>
+
+      <main class="content" id="main" tabindex="-1">
+        <div class="page-header">
+          <div>
+            <p class="eyebrow" id="todayDate"></p>
+            <h1 class="page-title" id="greeting">Dashboard</h1>
+            <p class="page-subtitle">Here's an overview of senior citizen services in the barangay.</p>
+          </div>
+          <div class="page-actions">
+            <a class="btn btn--secondary" href="reports-analytics.html"><i class="fa-solid fa-chart-pie" aria-hidden="true"></i>View reports</a>
+            <a class="btn btn--primary" href="senior-registry.html?action=new" data-perm="senior.write" data-perm-hide><i class="fa-solid fa-user-plus" aria-hidden="true"></i>Register senior</a>
+          </div>
+        </div>
+
+        <section class="stat-grid" aria-label="Key figures">
+          <a class="card card--hover stat-card" href="senior-registry.html">
+            <div class="stat-card__head">
+              <span class="stat-card__label">Active seniors</span>
+              <span class="stat-card__icon tone-violet"><i class="fa-solid fa-users" aria-hidden="true"></i></span>
+            </div>
+            <strong class="stat-card__value" id="statTotal">—</strong>
+            <p class="stat-card__meta" id="statTotalMeta"></p>
+          </a>
+
+          <a class="card card--hover stat-card" href="reports-analytics.html">
+            <div class="stat-card__head">
+              <span class="stat-card__label">Pension recipients</span>
+              <span class="stat-card__icon tone-approved"><i class="fa-solid fa-money-bill-wave" aria-hidden="true"></i></span>
+            </div>
+            <strong class="stat-card__value" id="statPension">—</strong>
+            <p class="stat-card__meta" id="statPensionMeta"></p>
+          </a>
+
+          <a class="card card--hover stat-card" href="assistance-management.html">
+            <div class="stat-card__head">
+              <span class="stat-card__label">Pending assistance</span>
+              <span class="stat-card__icon tone-pending"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i></span>
+            </div>
+            <strong class="stat-card__value" id="statPending">—</strong>
+            <p class="stat-card__meta" id="statPendingMeta"></p>
+          </a>
+
+          <a class="card card--hover stat-card" href="program-management.html">
+            <div class="stat-card__head">
+              <span class="stat-card__label">Upcoming programs</span>
+              <span class="stat-card__icon tone-info"><i class="fa-solid fa-calendar-check" aria-hidden="true"></i></span>
+            </div>
+            <strong class="stat-card__value" id="statPrograms">—</strong>
+            <p class="stat-card__meta" id="statProgramsMeta"></p>
+          </a>
+        </section>
+
+        <section class="dash-grid" aria-label="Analytics">
+          <article class="card dash-grid__wide">
+            <header class="card__header card__header--plain">
+              <div>
+                <h2 class="card__title">Monthly registrations</h2>
+                <p class="card__subtitle">New senior citizens registered over the last 12 months</p>
+              </div>
+              <span class="badge badge--violet badge--plain" id="regTotalBadge"></span>
+            </header>
+            <div class="card__body">
+              <div class="chart-box">
+                <canvas id="registrationsChart" role="img" aria-label="Line chart of monthly senior citizen registrations"></canvas>
+              </div>
+            </div>
+          </article>
+
+          <article class="card">
+            <header class="card__header card__header--plain">
+              <div>
+                <h2 class="card__title">Assistance by type</h2>
+                <p class="card__subtitle">Requests filed in the last 12 months</p>
+              </div>
+            </header>
+            <div class="card__body">
+              <div class="chart-box">
+                <canvas id="aidTypeChart" role="img" aria-label="Doughnut chart of assistance requests by type"></canvas>
+              </div>
+            </div>
+          </article>
+
+          <article class="card">
+            <header class="card__header card__header--plain">
+              <div>
+                <h2 class="card__title">Seniors by purok</h2>
+                <p class="card__subtitle">Active seniors by sex</p>
+              </div>
+            </header>
+            <div class="card__body">
+              <div class="chart-box chart-box--sm">
+                <canvas id="purokChart" role="img" aria-label="Stacked bar chart of active seniors per purok by sex"></canvas>
+              </div>
+            </div>
+          </article>
+
+          <article class="card dash-list-card">
+            <header class="card__header">
+              <div>
+                <h2 class="card__title">Upcoming events</h2>
+                <p class="card__subtitle">Programs scheduled next</p>
+              </div>
+              <a class="link small" href="program-management.html">View all</a>
+            </header>
+            <ul class="event-list" id="upcomingEvents"></ul>
+          </article>
+
+          <article class="card dash-list-card">
+            <header class="card__header">
+              <div>
+                <h2 class="card__title">Recent activity</h2>
+                <p class="card__subtitle">Latest actions across the system</p>
+              </div>
+              <a class="link small" href="audit-trail.html">Audit trail</a>
+            </header>
+            <ul class="activity-list" id="recentActivity"></ul>
+          </article>
+        </section>
+      </main>
+    </div>
+  </div>
+</body>
+</html>

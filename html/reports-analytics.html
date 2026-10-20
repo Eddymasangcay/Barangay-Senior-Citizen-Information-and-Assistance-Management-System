@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#3D007A">
+  <script>try{var __t=localStorage.getItem('bscims_theme');if(__t)document.documentElement.setAttribute('data-theme',__t);}catch(e){}</script>
+  <title>Reports &amp; Analytics | BSCIAMS</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" referrerpolicy="no-referrer">
+  <link rel="stylesheet" href="../css/global.css">
+  <link rel="stylesheet" href="../css/reports-analytics.css">
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" defer></script>
+  <script src="../js/global.js" defer></script>
+  <script src="../js/reports-charts.js" defer></script>
+</head>
+<body data-page="reports">
+  <a class="skip-link" href="#main">Skip to main content</a>
+
+  <div class="app">
+    <aside class="sidebar" id="sidebar" aria-label="Sidebar"></aside>
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <div class="main">
+      <header class="topbar" id="topbar"></header>
+
+      <main class="content" id="main" tabindex="-1">
+        <div class="print-header" id="printHeader" aria-hidden="true">
+          <h1>Barangay Senior Citizen Demographic &amp; Assistance Report</h1>
+          <p id="printMeta"></p>
+        </div>
+
+        <div class="page-header no-print">
+          <div>
+            <h1 class="page-title">Reports &amp; Analytics</h1>
+            <p class="page-subtitle">Demographic summaries and assistance reports, ready to print or export.</p>
+          </div>
+          <div class="page-actions">
+            <button type="button" class="btn btn--secondary" id="printReport"><i class="fa-solid fa-print" aria-hidden="true"></i>Print / PDF</button>
+            <button type="button" class="btn btn--primary" id="exportSummary" data-perm="report.export"><i class="fa-solid fa-file-csv" aria-hidden="true"></i>Export summary</button>
+          </div>
+        </div>
+
+        <form class="card report-filters no-print" id="reportFilters" aria-label="Report filters">
+          <div class="field">
+            <label class="label" for="rpFrom">Assistance period from</label>
+            <input class="input" type="date" id="rpFrom" name="from">
+          </div>
+          <div class="field">
+            <label class="label" for="rpTo">To</label>
+            <input class="input" type="date" id="rpTo" name="to">
+          </div>
+          <div class="field">
+            <label class="label" for="rpPurok">Purok</label>
+            <select class="select" id="rpPurok" name="purok" data-options="puroks"><option value="">All puroks</option></select>
+          </div>
+          <div class="report-filters__presets" role="group" aria-label="Quick date ranges">
+            <button type="button" class="chip" data-range="3">3M</button>
+            <button type="button" class="chip" data-range="6">6M</button>
+            <button type="button" class="chip is-active" data-range="12">12M</button>
+            <button type="button" class="chip" data-range="ytd">YTD</button>
+          </div>
+          <button type="button" class="btn btn--ghost" id="rpReset"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i>Reset</button>
+        </form>
+
+        <section class="kpi-strip" aria-label="Report highlights">
+          <div class="card kpi">
+            <span class="kpi__label">Active seniors</span>
+            <strong class="kpi__value" id="kpiTotal">—</strong>
+            <span class="kpi__meta" id="kpiTotalMeta"></span>
+          </div>
+          <div class="card kpi">
+            <span class="kpi__label">Average age</span>
+            <strong class="kpi__value" id="kpiAvgAge">—</strong>
+            <span class="kpi__meta" id="kpiAvgAgeMeta"></span>
+          </div>
+          <div class="card kpi">
+            <span class="kpi__label">Female share</span>
+            <strong class="kpi__value" id="kpiFemale">—</strong>
+            <span class="kpi__meta" id="kpiFemaleMeta"></span>
+          </div>
+          <div class="card kpi">
+            <span class="kpi__label">Pension coverage</span>
+            <strong class="kpi__value" id="kpiPension">—</strong>
+            <span class="kpi__meta" id="kpiPensionMeta"></span>
+          </div>
+          <div class="card kpi">
+            <span class="kpi__label">Aid released</span>
+            <strong class="kpi__value" id="kpiAid">—</strong>
+            <span class="kpi__meta" id="kpiAidMeta"></span>
+          </div>
+        </section>
+
+        <section class="analytics-grid" aria-label="Charts">
+          <article class="card analytics-card">
+            <header class="card__header card__header--plain">
+              <div>
+                <h2 class="card__title">Age &amp; sex distribution</h2>
+                <p class="card__subtitle">Population pyramid of active seniors</p>
+              </div>
+            </header>
+            <div class="card__body"><div class="chart-box"><canvas id="agePyramidChart" role="img" aria-label="Population pyramid by age bracket and sex"></canvas></div></div>
+          </article>
+
+          <article class="card analytics-card">
+            <header class="card__header card__header--plain">
+              <div>
+                <h2 class="card__title">Sex ratio</h2>
+                <p class="card__subtitle">Female vs. male</p>
+              </div>
+            </header>
+            <div class="card__body"><div class="chart-box"><canvas id="genderChart" role="img" aria-label="Pie chart of seniors by sex"></canvas></div></div>
+          </article>
+
+          <article class="card analytics-card">
+            <header class="card__header card__header--plain">
+              <div>
+                <h2 class="card__title">Pension coverage</h2>
+                <p class="card__subtitle">Seniors by pension source</p>
+              </div>
+            </header>
+            <div class="card__body"><div class="chart-box"><canvas id="pensionChart" role="img" aria-label="Doughnut chart of seniors by pension type"></canvas></div></div>
+          </article>
+
+          <article class="card analytics-card">
+            <header class="card__header card__header--plain">
+              <div>
+                <h2 class="card__title">Health conditions</h2>
+                <p class="card__subtitle">Most common recorded conditions</p>
+              </div>
+            </header>
+            <div class="card__body"><div class="chart-box"><canvas id="conditionsChart" role="img" aria-label="Bar chart of health conditions"></canvas></div></div>
+          </article>
+
+          <article class="card analytics-card analytics-card--wide">
+            <header class="card__header card__header--plain">
+              <div>
+                <h2 class="card__title">Assistance disbursement</h2>
+                <p class="card__subtitle" id="disbursementSubtitle">Released amount and requests filed per month</p>
+              </div>
+            </header>
+            <div class="card__body"><div class="chart-box chart-box--lg"><canvas id="disbursementChart" role="img" aria-label="Monthly assistance disbursement chart"></canvas></div></div>
+          </article>
+        </section>
+
+        <div class="report-bottom">
+          <section class="card summary-card" aria-labelledby="summaryHeading">
+            <header class="card__header">
+              <div>
+                <h2 class="card__title" id="summaryHeading">Demographic summary by purok</h2>
+                <p class="card__subtitle">Active seniors; aid released within the selected period</p>
+              </div>
+            </header>
+            <div class="table-wrap">
+              <table class="table summary-table">
+                <caption class="sr-only">Demographic summary by purok</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Purok</th>
+                    <th scope="col" class="text-right">Total</th>
+                    <th scope="col" class="text-right">Female</th>
+                    <th scope="col" class="text-right">Male</th>
+                    <th scope="col" class="text-right">Avg. age</th>
+                    <th scope="col" class="text-right">80+</th>
+                    <th scope="col" class="text-right">Pensioners</th>
+                    <th scope="col" class="text-right">PWD</th>
+                    <th scope="col" class="text-right">Indigent</th>
+                    <th scope="col" class="text-right">Aid released</th>
+                  </tr>
+                </thead>
+                <tbody id="summaryBody"></tbody>
+                <tfoot id="summaryFoot"></tfoot>
+              </table>
+            </div>
+          </section>
+
+          <aside class="card report-generator no-print" aria-labelledby="generatorHeading">
+            <header class="card__header">
+              <div>
+                <h2 class="card__title" id="generatorHeading">Generate report</h2>
+                <p class="card__subtitle">Uses the filters above</p>
+              </div>
+              <span class="icon-btn" aria-hidden="true"><i class="fa-solid fa-file-lines"></i></span>
+            </header>
+            <form class="card__body report-generator__form" id="reportForm">
+              <fieldset class="field">
+                <legend class="label">Report type</legend>
+                <div class="report-options">
+                  <label class="report-option">
+                    <input type="radio" name="reportType" value="demographic" checked>
+                    <span><strong>Demographic summary</strong><small>Per-purok counts and indicators</small></span>
+                  </label>
+                  <label class="report-option">
+                    <input type="radio" name="reportType" value="assistance">
+                    <span><strong>Assistance disbursement</strong><small>All requests within the period</small></span>
+                  </label>
+                  <label class="report-option">
+                    <input type="radio" name="reportType" value="masterlist">
+                    <span><strong>Senior masterlist</strong><small>Active seniors with contact details</small></span>
+                  </label>
+                  <label class="report-option">
+                    <input type="radio" name="reportType" value="pension">
+                    <span><strong>Pension beneficiaries</strong><small>Seniors receiving any pension</small></span>
+                  </label>
+                </div>
+              </fieldset>
+              <div class="field">
+                <label class="label" for="reportFormat">Format</label>
+                <select class="select" id="reportFormat" name="format">
+                  <option value="csv">CSV spreadsheet</option>
+                  <option value="print">Print / Save as PDF</option>
+                </select>
+              </div>
+              <button type="submit" class="btn btn--primary btn--block" data-perm="report.export"><i class="fa-solid fa-download" aria-hidden="true"></i>Generate report</button>
+            </form>
+          </aside>
+        </div>
+      </main>
+    </div>
+  </div>
+</body>
+</html>

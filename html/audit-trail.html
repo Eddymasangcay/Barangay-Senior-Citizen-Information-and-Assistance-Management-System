@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#3D007A">
+  <script>try{var __t=localStorage.getItem('bscims_theme');if(__t)document.documentElement.setAttribute('data-theme',__t);}catch(e){}</script>
+  <title>Audit Trail | BSCIAMS</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" referrerpolicy="no-referrer">
+  <link rel="stylesheet" href="../css/global.css">
+  <link rel="stylesheet" href="../css/audit-trail.css">
+
+  <script src="../js/global.js" defer></script>
+</head>
+<body data-page="audit">
+  <a class="skip-link" href="#main">Skip to main content</a>
+
+  <div class="app">
+    <aside class="sidebar" id="sidebar" aria-label="Sidebar"></aside>
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <div class="main">
+      <header class="topbar" id="topbar"></header>
+
+      <main class="content" id="main" tabindex="-1">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Audit Trail</h1>
+            <p class="page-subtitle">A tamper-evident record of user activity and system security events.</p>
+          </div>
+          <div class="page-actions">
+            <button type="button" class="btn btn--secondary" id="exportAudit" data-perm="report.export"><i class="fa-solid fa-file-csv" aria-hidden="true"></i>Export logs</button>
+          </div>
+        </div>
+
+        <div class="card restricted" id="auditRestricted" hidden>
+          <div class="empty-state">
+            <span class="empty-state__icon tone-alert"><i class="fa-solid fa-lock" aria-hidden="true"></i></span>
+            <strong>Access restricted</strong>
+            <span>The audit trail is available to Administrators and Barangay Staff only. Contact your system administrator if you need access.</span>
+            <a class="btn btn--secondary mt-4" href="dashboard.html"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i>Back to dashboard</a>
+          </div>
+        </div>
+
+        <div id="auditContent">
+          <section class="grid grid--4 mb-4" aria-label="Security summary">
+            <div class="card mini-stat">
+              <span class="mini-stat__icon"><i class="fa-solid fa-list-check" aria-hidden="true"></i></span>
+              <div><p class="mini-stat__label">Events today</p><p class="mini-stat__value" id="auToday">—</p></div>
+            </div>
+            <div class="card mini-stat">
+              <span class="mini-stat__icon tone-pending"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i></span>
+              <div><p class="mini-stat__label">Warnings (7 days)</p><p class="mini-stat__value" id="auWarnings">—</p></div>
+            </div>
+            <div class="card mini-stat">
+              <span class="mini-stat__icon tone-alert"><i class="fa-solid fa-circle-radiation" aria-hidden="true"></i></span>
+              <div><p class="mini-stat__label">Critical (7 days)</p><p class="mini-stat__value" id="auCritical">—</p></div>
+            </div>
+            <div class="card mini-stat">
+              <span class="mini-stat__icon tone-alert"><i class="fa-solid fa-user-lock" aria-hidden="true"></i></span>
+              <div><p class="mini-stat__label">Failed sign-ins (7 days)</p><p class="mini-stat__value" id="auFailed">—</p></div>
+            </div>
+          </section>
+
+          <section class="security-grid" aria-label="System security">
+            <article class="card">
+              <header class="card__header">
+                <div>
+                  <h2 class="card__title">Failed sign-in attempts</h2>
+                  <p class="card__subtitle">Most recent blocked authentication attempts</p>
+                </div>
+                <span class="badge badge--alert badge--plain"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i>Monitored</span>
+              </header>
+              <ul class="security-list" id="failedLogins"></ul>
+            </article>
+            <article class="card">
+              <header class="card__header">
+                <div>
+                  <h2 class="card__title">Active sessions</h2>
+                  <p class="card__subtitle">Users currently signed in to the system</p>
+                </div>
+                <a class="link small" href="database-backup.html#settings">Security settings</a>
+              </header>
+              <ul class="security-list" id="activeSessions"></ul>
+            </article>
+          </section>
+
+          <section class="card" aria-labelledby="logHeading">
+            <header class="card__header">
+              <div>
+                <h2 class="card__title" id="logHeading">Activity log</h2>
+                <p class="card__subtitle" id="auditCount"></p>
+              </div>
+            </header>
+
+            <form class="filter-bar audit-filters" id="auditFilters" role="search" aria-label="Filter audit log">
+              <div class="field field--grow">
+                <label class="label" for="auSearch">Search</label>
+                <div class="input-icon">
+                  <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                  <input class="input" type="search" id="auSearch" name="q" placeholder="Details, module, IP address…">
+                </div>
+              </div>
+              <div class="field">
+                <label class="label" for="auUser">User</label>
+                <select class="select" id="auUser" name="user"><option value="">All users</option></select>
+              </div>
+              <div class="field">
+                <label class="label" for="auAction">Action</label>
+                <select class="select" id="auAction" name="action"><option value="">All actions</option></select>
+              </div>
+              <div class="field">
+                <label class="label" for="auSeverity">Severity</label>
+                <select class="select" id="auSeverity" name="severity">
+                  <option value="">All levels</option>
+                  <option>Info</option>
+                  <option>Warning</option>
+                  <option>Critical</option>
+                </select>
+              </div>
+              <div class="field">
+                <label class="label" for="auFrom">From</label>
+                <input class="input" type="date" id="auFrom" name="from">
+              </div>
+              <div class="field">
+                <label class="label" for="auTo">To</label>
+                <input class="input" type="date" id="auTo" name="to">
+              </div>
+              <button type="button" class="btn btn--ghost" id="auReset"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i>Reset</button>
+            </form>
+
+            <div class="table-wrap">
+              <table class="table audit-table">
+                <caption class="sr-only">System activity log</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Timestamp</th>
+                    <th scope="col">User</th>
+                    <th scope="col">Action</th>
+                    <th scope="col">Module</th>
+                    <th scope="col">Details</th>
+                    <th scope="col">IP address</th>
+                    <th scope="col">Severity</th>
+                  </tr>
+                </thead>
+                <tbody id="auditBody"></tbody>
+              </table>
+            </div>
+            <nav class="pagination" id="auditPagination" aria-label="Audit log pagination"></nav>
+          </section>
+        </div>
+      </main>
+    </div>
+  </div>
+</body>
+</html>
