@@ -700,7 +700,13 @@
 
     async logout() {
       try {
-        await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin', keepalive: true });
+        await fetch('/api/auth/logout', {
+          method: 'POST',
+          credentials: 'same-origin',
+          cache: 'no-store',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: '{}'
+        });
       } catch (_) {}
     },
 
@@ -779,15 +785,15 @@
     },
 
     end(reason = 'signedout') {
+      if (this._ending) return;
+      this._ending = true;
       const s = this.get();
       if (s) DB.log('Logout', 'Authentication', reason === 'expired' ? `${s.name}'s session expired` : `${s.name} signed out`);
       localStorage.removeItem(SESSION_KEY);
       sessionStorage.removeItem(SESSION_KEY);
       this._cache = null;
       const next = `${LOGIN_URL}?${reason}=1`;
-      fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin', keepalive: true })
-        .catch(() => {})
-        .finally(() => { location.href = next; });
+      Auth.logout().finally(() => { location.replace(next); });
     }
   };
 
@@ -1730,7 +1736,15 @@
 
   /* Login ----------------------------------------------------------------- */
   Pages.login = async function () {
-    const remote = await Auth.currentUser();
+    const leaving = params.has('signedout') || params.has('expired');
+    if (leaving) {
+      await Auth.logout();
+      localStorage.removeItem(SESSION_KEY);
+      sessionStorage.removeItem(SESSION_KEY);
+      Session._cache = null;
+    }
+
+    const remote = leaving ? null : await Auth.currentUser();
     const existing = Session.get();
     if (remote) {
       const samePerson = existing && existing.username === remote.username;

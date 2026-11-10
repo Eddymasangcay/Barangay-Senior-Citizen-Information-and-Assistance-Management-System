@@ -6,7 +6,10 @@ Serves the existing pages, checks sign-in, and stores office records in SQLite.
 import os
 from datetime import timedelta
 
+from urllib.parse import urlparse
+
 from flask import Flask, jsonify, redirect, request, send_from_directory, session
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 import database
 
@@ -16,11 +19,13 @@ CSS_DIR = os.path.join(BASE_DIR, "css")
 JS_DIR = os.path.join(BASE_DIR, "js")
 
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY") or "bscims-local-class-server"
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=os.environ.get("RENDER") == "true",
+    SESSION_COOKIE_PATH="/",
     PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
     MAX_CONTENT_LENGTH=16 * 1024 * 1024,
 )
@@ -71,7 +76,9 @@ def _origin_allowed():
     origin = request.headers.get("Origin")
     if not origin:
         return True
-    return origin == request.host_url.rstrip("/")
+    origin_host = (urlparse(origin).hostname or "").lower()
+    request_host = (request.host or "").split(":")[0].lower()
+    return bool(origin_host) and origin_host == request_host
 
 
 def _require_login():
@@ -158,7 +165,16 @@ def login():
 @app.post("/api/auth/logout")
 def logout():
     session.clear()
-    return jsonify(ok=True)
+    session.modified = True
+    response = jsonify(ok=True)
+    response.delete_cookie(
+        app.config.get("SESSION_COOKIE_NAME", "session"),
+        path=app.config.get("SESSION_COOKIE_PATH") or "/",
+        secure=bool(app.config.get("SESSION_COOKIE_SECURE")),
+        httponly=True,
+        samesite=app.config.get("SESSION_COOKIE_SAMESITE") or "Lax",
+    )
+    return response
 
 
 @app.get("/api/auth/me")
