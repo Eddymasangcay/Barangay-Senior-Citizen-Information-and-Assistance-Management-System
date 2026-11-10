@@ -1186,103 +1186,14 @@
       toast('Select at least one senior citizen to print IDs.', 'warning');
       return;
     }
-    const cards = seniors.map(renderIdCard).join('');
-    const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Senior Citizen ID</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-  <style>
-    @page { size: 85.6mm 53.98mm; margin: 0; }
-    html, body { margin: 0; padding: 0; background: #fff; }
-    body { font-family: Inter, Arial, sans-serif; }
-    .id-card {
-      box-sizing: border-box;
-      display: grid;
-      grid-template-rows: 11mm 1fr 7mm;
-      width: 85.6mm;
-      height: 53.98mm;
-      overflow: hidden;
-      color: #1E1A24;
-      background: #fff;
-      border: 0.3mm solid #3D007A;
-      font-size: 7.2pt;
-      line-height: 1.25;
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-      page-break-after: always;
-      break-after: page;
-    }
-    .id-card:last-child { page-break-after: auto; break-after: auto; }
-    .id-card *, .id-card *::before, .id-card *::after { box-sizing: border-box; }
-    .id-card__banner {
-      display: grid; grid-template-columns: 9mm 1fr auto; align-items: center;
-      gap: 2mm; padding: 0 2.8mm; background: #3D007A; color: #fff;
-    }
-    .id-card__seal {
-      display: grid; place-items: center; width: 8mm; height: 8mm;
-      border: 0.35mm solid rgba(255,255,255,0.85); border-radius: 50%;
-      background: #2E005C; font-size: 4.2mm;
-    }
-    .id-card__kicker { display: block; font-size: 5.4pt; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.86; }
-    .id-card__title { display: block; font-size: 8pt; font-weight: 700; }
-    .id-card__ra { font-size: 5.2pt; font-weight: 600; text-transform: uppercase; }
-    .id-card__body { display: grid; grid-template-columns: 18.5mm 1fr 16.5mm; gap: 2.2mm; padding: 2.2mm 2.8mm 1.6mm; min-height: 0; }
-    .id-card__photo {
-      display: grid; place-items: center; width: 18.5mm; height: 23.5mm; overflow: hidden;
-      border: 0.25mm solid #C9C2D2; background: #F4EEFA; color: #3D007A; font-size: 7mm; font-weight: 700;
-    }
-    .id-card__photo img { width: 18.5mm; height: 23.5mm; object-fit: cover; display: block; }
-    .id-card__name { margin: 0 0 1.2mm; font-size: 8pt; font-weight: 700; text-transform: uppercase; }
-    .id-card__dl { margin: 0; }
-    .id-card__dl div { display: grid; grid-template-columns: 16mm 1fr; gap: 1mm; margin: 0 0 0.55mm; }
-    .id-card__dl dt { margin: 0; color: #6B6575; font-size: 5.6pt; font-weight: 600; text-transform: uppercase; }
-    .id-card__dl dd { margin: 0; font-weight: 600; font-size: 7.2pt; }
-    .id-card__number { display: inline-block; margin-top: 0.6mm; padding: 0.4mm 1.4mm; border-radius: 0.8mm; background: #F4EEFA; color: #3D007A; font-weight: 700; }
-    .id-card__codes { display: flex; flex-direction: column; justify-content: space-between; }
-    .id-card__qr { width: 16.5mm; height: 16.5mm; border: 0.25mm solid #1E1A24; background: repeating-conic-gradient(#1E1A24 0 25%, #fff 0 50%) 0 0 / 1.7mm 1.7mm; }
-    .id-card__barcode { height: 6.4mm; background: repeating-linear-gradient(90deg, #1E1A24 0 0.45mm, #fff 0.45mm 0.7mm, #1E1A24 0.7mm 0.95mm, #fff 0.95mm 1.35mm); }
-    .id-card__footer { display: flex; align-items: center; justify-content: space-between; padding: 0 2.8mm; background: #EFECF1; color: #3D007A; font-size: 5.4pt; font-weight: 600; text-transform: uppercase; }
-    .id-card--scan { display: block; padding: 0; grid-template-rows: none; }
-    .id-card__scan { width: 85.6mm; height: 53.98mm; max-width: 85.6mm; max-height: 53.98mm; object-fit: contain; object-position: center; display: block; background: #fff; }
-  </style>
-</head>
-<body>${cards}</body>
-</html>`;
-
-    const waitForImages = (win) => Promise.all([...win.document.images].map((img) => (
-      img.complete ? Promise.resolve() : new Promise((resolve) => { img.onload = img.onerror = resolve; })
-    )));
-
-    const printWindow = (win) => {
-      waitForImages(win).then(() => {
-        win.focus();
-        win.print();
-      });
-    };
-
-    const popup = window.open('', '_blank', 'width=920,height=640');
-    if (popup) {
-      popup.document.open();
-      popup.document.write(html);
-      popup.document.close();
-      popup.addEventListener('afterprint', () => popup.close());
-      printWindow(popup);
+    const sheets = seniors.map((s) => `<section class="id-sheet">${renderIdCard(s)}</section>`).join('');
+    try {
+      sessionStorage.setItem('bscims.idPrint', sheets);
+    } catch (_) {
+      toast('The ID image is too large to prepare for print. Try a smaller photo.', 'error');
       return;
     }
-
-    let frame = document.getElementById('idPrintFrame');
-    if (!frame) {
-      frame = document.createElement('iframe');
-      frame.id = 'idPrintFrame';
-      frame.title = 'Senior Citizen ID print';
-      frame.setAttribute('aria-hidden', 'true');
-      frame.style.cssText = 'position:fixed;width:0;height:0;border:0;right:0;bottom:0;visibility:hidden;';
-      document.body.appendChild(frame);
-    }
-    frame.onload = () => printWindow(frame.contentWindow);
-    frame.srcdoc = html;
+    location.assign('/PrintSeniorId');
   }
 
   function renderPagination(el, { total, page, perPage, onChange }) {

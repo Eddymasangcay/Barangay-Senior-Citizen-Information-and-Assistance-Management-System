@@ -43,6 +43,7 @@ OFFICE_PAGES = frozenset({
     "Dashboard",
     "ReportsAnalytics",
     "SeniorRegistry",
+    "PrintSeniorId",
     "ProgramManagement",
     "AssistanceManagement",
     "AuditTrail",
