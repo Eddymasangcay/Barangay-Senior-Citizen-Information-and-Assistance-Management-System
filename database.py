@@ -1,8 +1,10 @@
-"""SQLite access for the barangay office registry."""
+"""Office registry storage. SQLite on this PC, PostgreSQL when DATABASE_URL is set."""
 
 import os
+import re
 import sqlite3
 import threading
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -11,6 +13,7 @@ BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 DB_DIR = os.path.join(BASE_DIR, "database")
 DB_PATH = os.path.join(DB_DIR, "bscims.db")
 SCHEMA_PATH = os.path.join(DB_DIR, "schema.sql")
+POSTGRES_SCHEMA_PATH = os.path.join(DB_DIR, "schema.postgres.sql")
 
 STAFF_SEED = (
     ("emasangcay", "Admin@123", "Eduardo Masangcay", "Administrator"),
@@ -43,24 +46,134 @@ LEGACY_TABLES = (
     "staff_accounts",
 )
 
+_IDENTIFIERS = tuple(sorted((
+    "StaffAccounts", "AccountId", "Username", "PasswordHash", "FullName", "AccountStatus",
+    "SeniorCitizens", "RecordId", "OscaId", "FirstName", "MiddleName", "LastName",
+    "Birthdate", "CivilStatus", "ContactNo", "HomeAddress", "PensionType",
+    "IsPwd", "IsIndigent", "LivingStatus", "Portrait", "IdCardImage",
+    "PensionDistributedAt", "DateRegistered", "DateUpdated",
+    "SeniorAilments", "AilmentId", "AilmentName",
+    "OutreachPrograms", "ProgramId", "ProgramType", "EventDate", "StartTime",
+    "SlotLimit", "IsCancelled", "DateCreated",
+    "ProgramEnrollees", "EnrolleeId",
+    "AidRequests", "RequestId", "AidType", "RequestStatus", "DateFiled", "HandledBy",
+    "AidStatusHistory", "HistoryId", "LoggedAt", "LoggedBy",
+    "ActivityLog", "LogId", "ActorName", "ActorRole", "ActionType", "ModuleName", "IpAddress",
+    "BackupHistory", "BackupId", "BackupType", "FileSize", "CreatedBy", "RecordCount", "RanAt",
+    "OfficeConfig", "ConfigId", "AutoBackup", "BackupFrequency", "LogRetention",
+    "InAppNotices", "EmailAlerts", "TwoFactor", "SessionMinutes", "StoreVersion",
+    "SeededAt", "ImportedFromBrowser",
+    "Role", "Sex", "Purok", "Venue", "Title", "Description", "Amount",
+    "Purpose", "Remarks", "Notes", "Details", "Severity",
+), key=len, reverse=True))
+
 _WRITE_LOCK = threading.Lock()
+
+
+def using_postgres():
+    return bool(os.environ.get("DATABASE_URL", "").strip())
+
+
+def engine_name():
+    return "postgres" if using_postgres() else "sqlite"
 
 
 def _now():
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
+def _postgres_dsn():
+    url = os.environ.get("DATABASE_URL", "").strip()
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://"):]
+    return url
+
+
+def _adapt_sql(statement, postgres):
+    if not postgres:
+        return statement
+    statement = statement.replace(" COLLATE NOCASE", "")
+    for name in _IDENTIFIERS:
+        statement = re.sub(rf"\b{re.escape(name)}\b", f'"{name}"', statement)
+    return statement.replace("?", "%s")
+
+
+class _Conn:
+    def __init__(self, raw, postgres):
+        self.raw = raw
+        self.postgres = postgres
+
+    def execute(self, statement, params=None):
+        statement = _adapt_sql(statement, self.postgres)
+        if params is None:
+            return self.raw.execute(statement)
+        return self.raw.execute(statement, tuple(params))
+
+    def executemany(self, statement, seq):
+        statement = _adapt_sql(statement, self.postgres)
+        return self.raw.executemany(statement, seq)
+
+
+@contextmanager
 def connect():
-    os.makedirs(DB_DIR, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, timeout=30)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA busy_timeout = 30000")
-    return conn
+    postgres = using_postgres()
+    if postgres:
+        import psycopg
+        from psycopg.rows import dict_row
+
+        raw = psycopg.connect(_postgres_dsn(), row_factory=dict_row, connect_timeout=10)
+    else:
+        os.makedirs(DB_DIR, exist_ok=True)
+        raw = sqlite3.connect(DB_PATH, timeout=30)
+        raw.row_factory = sqlite3.Row
+        raw.execute("PRAGMA foreign_keys = ON")
+        raw.execute("PRAGMA busy_timeout = 30000")
+        raw.execute("PRAGMA journal_mode = WAL")
+    conn = _Conn(raw, postgres)
+    try:
+        yield conn
+        raw.commit()
+    except Exception:
+        raw.rollback()
+        raise
+    finally:
+        raw.close()
 
 
 def _table_names(conn):
+    if conn.postgres:
+        rows = conn.execute(
+            "SELECT tablename AS n FROM pg_tables WHERE schemaname = 'public'"
+        )
+        return {row["n"] for row in rows}
     return {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+
+
+def _exec_postgres_schema(conn):
+    with open(POSTGRES_SCHEMA_PATH, "r", encoding="utf-8") as fh:
+        script = fh.read()
+    buf = []
+    for line in script.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("--"):
+            continue
+        buf.append(line)
+        if stripped.endswith(";"):
+            stmt = "\n".join(buf).strip().rstrip(";").strip()
+            buf = []
+            if stmt:
+                conn.raw.execute(stmt)
+    tail = "\n".join(buf).strip().rstrip(";").strip()
+    if tail:
+        conn.raw.execute(tail)
+
+
+def _row_keys(row):
+    if row is None:
+        return set()
+    if isinstance(row, dict):
+        return set(row.keys())
+    return set(row.keys())
 
 
 def _dump_legacy(conn):
@@ -186,31 +299,34 @@ def _dump_legacy(conn):
 def init_db():
     snapshot = None
     with connect() as conn:
-        conn.execute("PRAGMA journal_mode = WAL")
-        names = _table_names(conn)
-        if "senior_citizens" in names:
-            snapshot = _dump_legacy(conn)
-            conn.execute("PRAGMA foreign_keys = OFF")
-            for table in LEGACY_TABLES:
-                conn.execute(f"DROP TABLE IF EXISTS {table}")
-            conn.execute("PRAGMA foreign_keys = ON")
-            conn.commit()
+        if conn.postgres:
+            _exec_postgres_schema(conn)
+        else:
+            names = _table_names(conn)
+            if "senior_citizens" in names:
+                snapshot = _dump_legacy(conn)
+                conn.execute("PRAGMA foreign_keys = OFF")
+                for table in LEGACY_TABLES:
+                    conn.execute(f"DROP TABLE IF EXISTS {table}")
+                conn.execute("PRAGMA foreign_keys = ON")
+                conn.raw.commit()
+            with open(SCHEMA_PATH, "r", encoding="utf-8") as fh:
+                conn.raw.executescript(fh.read())
+        _ensure_senior_columns(conn)
 
-        with open(SCHEMA_PATH, "r", encoding="utf-8") as fh:
-            conn.executescript(fh.read())
-
-        if conn.execute("SELECT COUNT(*) FROM StaffAccounts").fetchone()[0] == 0:
+        if conn.execute("SELECT COUNT(*) AS n FROM StaffAccounts").fetchone()["n"] == 0:
             conn.executemany(
                 """
                 INSERT INTO StaffAccounts (Username, PasswordHash, FullName, Role, AccountStatus)
                 VALUES (?, ?, ?, ?, 'Active')
+                ON CONFLICT DO NOTHING
                 """,
                 [
                     (user, generate_password_hash(password), name, role)
                     for user, password, name, role in STAFF_SEED
                 ],
             )
-        if conn.execute("SELECT COUNT(*) FROM OfficeConfig").fetchone()[0] == 0:
+        if conn.execute("SELECT COUNT(*) AS n FROM OfficeConfig").fetchone()["n"] == 0:
             conn.execute(
                 """
                 INSERT INTO OfficeConfig (
@@ -218,14 +334,26 @@ def init_db():
                     InAppNotices, EmailAlerts, TwoFactor, SessionMinutes,
                     StoreVersion, SeededAt, ImportedFromBrowser
                 ) VALUES (1, 1, 'Daily', '30', 1, 0, 0, '30', 2, ?, 0)
+                ON CONFLICT DO NOTHING
                 """,
                 (_now(),),
             )
-        conn.commit()
 
     if snapshot:
         load_store(snapshot, imported=False)
-    return DB_PATH
+    return engine_name()
+
+
+def _ensure_senior_columns(conn):
+    if conn.postgres:
+        conn.execute("ALTER TABLE SeniorCitizens ADD COLUMN IF NOT EXISTS IdCardImage TEXT")
+        conn.execute("ALTER TABLE SeniorCitizens ADD COLUMN IF NOT EXISTS PensionDistributedAt TEXT")
+        return
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(SeniorCitizens)")}
+    if "IdCardImage" not in columns:
+        conn.execute("ALTER TABLE SeniorCitizens ADD COLUMN IdCardImage TEXT")
+    if "PensionDistributedAt" not in columns:
+        conn.execute("ALTER TABLE SeniorCitizens ADD COLUMN PensionDistributedAt TEXT")
 
 
 def authenticate(username, password):
@@ -237,7 +365,7 @@ def authenticate(username, password):
             """
             SELECT Username, PasswordHash, FullName, Role, AccountStatus
             FROM StaffAccounts
-            WHERE Username = ? COLLATE NOCASE
+            WHERE LOWER(Username) = LOWER(?)
             """,
             (key,),
         ).fetchone()
@@ -249,6 +377,13 @@ def authenticate(username, password):
 
 
 def file_size():
+    if using_postgres():
+        try:
+            with connect() as conn:
+                row = conn.execute("SELECT pg_database_size(current_database()) AS n").fetchone()
+            return int(row["n"] if row else 0)
+        except Exception:
+            return 0
     try:
         return os.path.getsize(DB_PATH)
     except OSError:
@@ -277,6 +412,7 @@ def dump_store():
 
         seniors = []
         for row in conn.execute("SELECT * FROM SeniorCitizens ORDER BY DateRegistered DESC"):
+            keys = _row_keys(row)
             seniors.append({
                 "id": row["RecordId"],
                 "oscaId": row["OscaId"],
@@ -295,6 +431,8 @@ def dump_store():
                 "conditions": ailments.get(row["RecordId"], []),
                 "status": row["LivingStatus"],
                 "photo": row["Portrait"] or "",
+                "idCardImage": (row["IdCardImage"] or "") if "IdCardImage" in keys else "",
+                "pensionDistributedAt": (row["PensionDistributedAt"] or "") if "PensionDistributedAt" in keys else "",
                 "registeredAt": row["DateRegistered"],
                 "updatedAt": row["DateUpdated"] or row["DateRegistered"],
             })
@@ -374,6 +512,7 @@ def dump_store():
     return {
         "version": int(config["StoreVersion"]) if config else 2,
         "seededAt": (config["SeededAt"] if config else None) or _now(),
+        "engine": engine_name(),
         "seniors": seniors,
         "programs": programs,
         "assistance": assistance,
@@ -417,8 +556,9 @@ def load_store(payload, imported=False):
                 INSERT INTO SeniorCitizens (
                     RecordId, OscaId, FirstName, MiddleName, LastName, Sex, Birthdate,
                     CivilStatus, ContactNo, Purok, HomeAddress, PensionType, IsPwd,
-                    IsIndigent, LivingStatus, Portrait, DateRegistered, DateUpdated
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    IsIndigent, LivingStatus, Portrait, IdCardImage, PensionDistributedAt,
+                    DateRegistered, DateUpdated
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     senior.get("id"),
@@ -437,6 +577,8 @@ def load_store(payload, imported=False):
                     _flag(senior.get("indigent")),
                     senior.get("status") if senior.get("status") in ("Active", "Deceased", "Transferred") else "Active",
                     senior.get("photo") or "",
+                    senior.get("idCardImage") or "",
+                    senior.get("pensionDistributedAt") or "",
                     senior.get("registeredAt") or _now(),
                     senior.get("updatedAt") or senior.get("registeredAt") or _now(),
                 ),
@@ -446,7 +588,7 @@ def load_store(payload, imported=False):
                 if not name:
                     continue
                 conn.execute(
-                    "INSERT OR IGNORE INTO SeniorAilments (RecordId, AilmentName) VALUES (?, ?)",
+                    "INSERT INTO SeniorAilments (RecordId, AilmentName) VALUES (?, ?) ON CONFLICT DO NOTHING",
                     (senior["id"], name),
                 )
 
@@ -477,7 +619,7 @@ def load_store(payload, imported=False):
                 if record_id not in known:
                     continue
                 conn.execute(
-                    "INSERT OR IGNORE INTO ProgramEnrollees (ProgramId, RecordId) VALUES (?, ?)",
+                    "INSERT INTO ProgramEnrollees (ProgramId, RecordId) VALUES (?, ?) ON CONFLICT DO NOTHING",
                     (program["id"], record_id),
                 )
 
@@ -584,7 +726,6 @@ def load_store(payload, imported=False):
                 1 if imported else 0,
             ),
         )
-        conn.commit()
     return dump_store()
 
 
@@ -592,10 +733,19 @@ def append_activity(entry):
     with _WRITE_LOCK, connect() as conn:
         conn.execute(
             """
-            INSERT OR REPLACE INTO ActivityLog (
+            INSERT INTO ActivityLog (
                 LogId, LoggedAt, ActorName, ActorRole, ActionType,
                 ModuleName, Details, Severity, IpAddress
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(LogId) DO UPDATE SET
+                LoggedAt = excluded.LoggedAt,
+                ActorName = excluded.ActorName,
+                ActorRole = excluded.ActorRole,
+                ActionType = excluded.ActionType,
+                ModuleName = excluded.ModuleName,
+                Details = excluded.Details,
+                Severity = excluded.Severity,
+                IpAddress = excluded.IpAddress
             """,
             (
                 entry.get("id") or f"LOG-{int(datetime.now().timestamp())}",
@@ -609,4 +759,3 @@ def append_activity(entry):
                 entry.get("ip") or "",
             ),
         )
-        conn.commit()

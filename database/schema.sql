@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS SeniorCitizens (
   IsIndigent       INTEGER NOT NULL DEFAULT 0 CHECK (IsIndigent IN (0, 1)),
   LivingStatus     TEXT NOT NULL DEFAULT 'Active' CHECK (LivingStatus IN ('Active', 'Deceased', 'Transferred')),
   Portrait         TEXT,
+  IdCardImage      TEXT,
+  PensionDistributedAt TEXT,
   DateRegistered   TEXT NOT NULL,
   DateUpdated      TEXT
 );

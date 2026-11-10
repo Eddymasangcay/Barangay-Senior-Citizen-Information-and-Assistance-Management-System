@@ -116,14 +116,14 @@ def login_page_legacy():
 def styles(filename):
     if not filename.endswith(".css"):
         return ("Not found", 404)
-    return send_from_directory(CSS_DIR, filename)
+    return _send_html(CSS_DIR, filename)
 
 
 @app.get("/js/<path:filename>")
 def scripts(filename):
     if not filename.endswith(".js"):
         return ("Not found", 404)
-    return send_from_directory(JS_DIR, filename)
+    return _send_html(JS_DIR, filename)
 
 
 @app.get("/html/<path:filename>")
@@ -213,5 +213,8 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", "5000"))
     host = "0.0.0.0" if os.environ.get("PORT") else "127.0.0.1"
     print(f"BSCIAMS is running at http://{host}:{port}")
-    print(f"SQLite file: {database.DB_PATH}")
+    if database.using_postgres():
+        print("Database: PostgreSQL (DATABASE_URL)")
+    else:
+        print(f"SQLite file: {database.DB_PATH}")
     app.run(host=host, port=port, debug=False)

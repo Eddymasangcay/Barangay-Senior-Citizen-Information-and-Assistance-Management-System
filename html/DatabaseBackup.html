@@ -41,7 +41,7 @@
           </div>
           <div class="card mini-stat">
             <span class="mini-stat__icon"><i class="fa-solid fa-hard-drive" aria-hidden="true"></i></span>
-            <div><p class="mini-stat__label">Database size</p><p class="mini-stat__value" id="dbSize">—</p><p class="small muted">Stored in SQLite (bscims.db)</p></div>
+            <div><p class="mini-stat__label">Database size</p><p class="mini-stat__value" id="dbSize">—</p><p class="small muted" id="dbEngineMeta">Stored in SQLite (bscims.db)</p></div>
           </div>
           <div class="card mini-stat">
             <span class="mini-stat__icon tone-info"><i class="fa-solid fa-table-list" aria-hidden="true"></i></span>
@@ -66,7 +66,7 @@
               <div class="card__body">
                 <div class="storage">
                   <div class="row row--between small">
-                    <span class="muted">SQLite file</span>
+                    <span class="muted" id="storageKind">SQLite file</span>
                     <span class="muted" id="storageText"></span>
                   </div>
                   <div class="progress progress--thin" id="storageBar" role="progressbar" aria-label="SQLite file size" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
@@ -197,14 +197,14 @@
                   <span class="switch"><input type="checkbox" name="notifications" role="switch"><span class="switch__track" aria-hidden="true"></span></span>
                 </label>
                 <label class="switch-row">
-                  <span class="switch-row__text"><strong>Email alerts</strong><small>Send a daily digest to administrators</small></span>
-                  <span class="switch"><input type="checkbox" name="emailAlerts" role="switch"><span class="switch__track" aria-hidden="true"></span></span>
+                  <span class="switch-row__text"><strong>Email alerts</strong><small>Not connected in this release</small></span>
+                  <span class="switch"><input type="checkbox" name="emailAlerts" role="switch" disabled><span class="switch__track" aria-hidden="true"></span></span>
                 </label>
 
                 <h3 class="settings-group">Security</h3>
                 <label class="switch-row">
-                  <span class="switch-row__text"><strong>Two-factor authentication</strong><small>Require a one-time code at sign-in</small></span>
-                  <span class="switch"><input type="checkbox" name="twoFactor" role="switch"><span class="switch__track" aria-hidden="true"></span></span>
+                  <span class="switch-row__text"><strong>Two-factor authentication</strong><small>Not available in this release</small></span>
+                  <span class="switch"><input type="checkbox" name="twoFactor" role="switch" disabled><span class="switch__track" aria-hidden="true"></span></span>
                 </label>
                 <div class="settings-row">
                   <label class="label" for="setTimeout">Session timeout</label>

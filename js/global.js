@@ -16,7 +16,7 @@
   const THEME_KEY = 'bscims_theme';
   const LAST_USER_KEY = 'bscims_last_user';
   const DB_VERSION = 2;
-  const STORAGE_QUOTA = 5 * 1024 * 1024;
+  const STORAGE_QUOTA = 16 * 1024 * 1024;
 
   const PAGE = document.body.dataset.page || '';
   const IS_LOGIN = PAGE === 'login';
@@ -517,8 +517,16 @@
     async connect() {
       clearBrowserRecords();
       const { res, body } = await this._request('/api/records');
+      if (res.status === 401) {
+        localStorage.removeItem(SESSION_KEY);
+        sessionStorage.removeItem(SESSION_KEY);
+        Session._cache = null;
+        location.replace(`${LOGIN_URL}?expired=1`);
+        this._data = this._blank();
+        return this._data;
+      }
       if (!res.ok) {
-        toast('SQLite could not be reached. Start the server, then refresh.', 'error');
+        toast('The office database could not be reached. Start the server, then refresh.', 'error');
         this.usingServer = false;
         this._data = this._blank();
         return this._data;
@@ -538,12 +546,16 @@
       if (!this._data) return false;
       if (IS_LOGIN) return true;
       if (!this.usingServer) {
-        toast('The record could not be saved to SQLite. Check that the server is running.', 'error');
+        toast('The record could not be saved. Check that the server is running.', 'error');
         return false;
       }
       const { res, body } = await this._request('/api/records', { method: 'PUT', body: JSON.stringify(this._data) });
+      if (res.status === 401) {
+        if (!Session._ending) Session.end('expired');
+        return false;
+      }
       if (!res.ok) {
-        toast('The record could not be saved to SQLite. Check that the server is running.', 'error');
+        toast('The record could not be saved. Check that the server is running.', 'error');
         return false;
       }
       if (body.store && typeof body.store.dbFileBytes === 'number') this._data.dbFileBytes = body.store.dbFileBytes;
@@ -555,8 +567,10 @@
       document.dispatchEvent(new CustomEvent('db:change'));
       this._saveQueue = this._saveQueue.then(() => this.persist()).catch((err) => {
         console.error('[BSCIAMS] Unable to persist data.', err);
+        toast('The record could not be saved. Check your connection and try again.', 'error');
+        return false;
       });
-      return true;
+      return this._saveQueue;
     },
 
     all(col) { return this.load()[col] || []; },
@@ -643,11 +657,10 @@
         backups: Array.isArray(obj.backups) ? obj.backups : [],
         settings: { ...EMPTY_SETTINGS, ...(obj.settings || {}) }
       };
-      this.save();
       return true;
     },
 
-    reset() { this._data = buildSeed(); return this.save(); }
+    reset() { this._data = buildSeed(); return true; }
   };
 
   /* ------------------------------------------------------------------------
@@ -689,12 +702,13 @@
     async currentUser() {
       try {
         const res = await fetch('/api/auth/me', { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } });
-        if (!res.ok) return null;
+        if (res.status === 401) return { ok: false, reason: 'guest' };
+        if (!res.ok) return { ok: false, reason: 'error' };
         const body = await res.json();
-        if (!body.user || this.validateRole(body.user.role)) return null;
-        return body.user;
+        if (!body.user || this.validateRole(body.user.role)) return { ok: false, reason: 'guest' };
+        return { ok: true, user: body.user };
       } catch (_) {
-        return null;
+        return { ok: false, reason: 'error' };
       }
     },
 
@@ -1744,7 +1758,11 @@
       Session._cache = null;
     }
 
-    const remote = leaving ? null : await Auth.currentUser();
+    const auth = leaving ? { ok: false, reason: 'guest' } : await Auth.currentUser();
+    if (auth.reason === 'error') {
+      toast('Cannot reach the sign-in server. Please try again.', 'error');
+    }
+    const remote = auth.ok ? auth.user : null;
     const existing = Session.get();
     if (remote) {
       const samePerson = existing && existing.username === remote.username;
@@ -2180,7 +2198,7 @@
       if (btn.dataset.action === 'delete') {
         const ok = await confirmDialog({
           title: 'Delete senior record?',
-          message: `${displayName(s)} (${s.oscaId}) will be permanently removed. Assistance history will be kept for audit purposes.`,
+          message: `${displayName(s)} (${s.oscaId}) will be permanently removed. Assistance requests and program enrollments for this person will also be removed.`,
           confirmText: 'Delete record', icon: 'fa-trash-can'
         });
         if (!ok) return;
@@ -3128,18 +3146,6 @@
     const settingsForm = $('#settingsForm');
     let pendingRestore = null;
 
-    const FREQ_MS = { Daily: 86400000, Weekly: 7 * 86400000 };
-    function simulateAutoBackup() {
-      const s = DB.settings;
-      if (!s.autoBackup) return;
-      const lastAuto = DB.all('backups').find((b) => b.type === 'Automatic');
-      const scheduled = new Date(); scheduled.setHours(2, 0, 0, 0);
-      if (scheduled > new Date()) scheduled.setDate(scheduled.getDate() - 1);
-      if (lastAuto && new Date(scheduled) - new Date(lastAuto.ts) < (FREQ_MS[s.backupFrequency] || FREQ_MS.Daily) - 60000) return;
-      DB.load().backups.unshift({ id: uid('BK'), ts: scheduled.toISOString(), type: 'Automatic', size: DB.sizeBytes(), by: 'System', records: recordCount() });
-      DB.log('Backup', 'Database Backup', `Automatic ${s.backupFrequency.toLowerCase()} backup completed`, 'Info', { user: 'System', role: 'Scheduler', ip: '127.0.0.1' });
-    }
-
     const recordCount = () => ['seniors', 'programs', 'assistance'].reduce((n, k) => n + DB.all(k).length, 0);
 
     function renderOverview() {
@@ -3153,7 +3159,10 @@
       const pct = Math.min(100, (size / STORAGE_QUOTA) * 100);
       $('#storageFill').style.width = `${Math.max(pct, 1)}%`;
       $('#storageFill').classList.toggle('is-warning', pct > 70);
-      $('#storageText').textContent = `${fmtBytes(size)} stored in database/bscims.db`;
+      const postgres = DB.load().engine === 'postgres';
+      $('#dbEngineMeta').textContent = postgres ? 'Stored in PostgreSQL (Render)' : 'Stored in SQLite (bscims.db)';
+      $('#storageKind').textContent = postgres ? 'Postgres database' : 'SQLite file';
+      $('#storageText').textContent = postgres ? `${fmtBytes(size)} stored in PostgreSQL` : `${fmtBytes(size)} stored in database/bscims.db`;
       $('#storageBar').setAttribute('aria-valuenow', pct.toFixed(1));
       $('#nextBackup').textContent = DB.settings.autoBackup ? `Next automatic backup: ${DB.settings.backupFrequency === 'Weekly' ? 'in 7 days' : 'tomorrow'} at 2:00 AM` : 'Automatic backups are turned off';
     }
@@ -3200,7 +3209,7 @@
       const info = $('#restoreFileInfo');
       if (!file) { info.hidden = true; return; }
       if (!/\.json$/i.test(file.name)) { showRestoreError('Please choose a .json backup file.'); return; }
-      if (file.size > STORAGE_QUOTA) { showRestoreError('This file is larger than 5 MB.'); return; }
+      if (file.size > STORAGE_QUOTA) { showRestoreError('This file is larger than 16 MB.'); return; }
       const reader = new FileReader();
       reader.onload = () => {
         let obj;
@@ -3244,12 +3253,21 @@
       $('#restoreBtn').disabled = true;
       await runProgress($('#restoreProgress'), ['Validating backup…', 'Replacing records…', 'Rebuilding indexes…', 'Finishing up…']);
       const backups = DB.all('backups');
-      if (DB.importData(pendingRestore.obj)) {
-        DB.load().backups = [{ id: uid('BK'), ts: new Date().toISOString(), type: 'Restore point', size: pendingRestore.size, by: session.name, records: recordCount() }, ...backups];
-        DB.log('Restore', 'Database Backup', `Database restored from ${pendingRestore.name}`, 'Critical');
-        flash(`Data restored from ${pendingRestore.name}.`, 'success', 'Restore complete');
-        location.reload();
+      if (!DB.importData(pendingRestore.obj)) {
+        toast('The backup could not be imported.', 'error');
+        $('#restoreBtn').disabled = false;
+        return;
       }
+      DB.load().backups = [{ id: uid('BK'), ts: new Date().toISOString(), type: 'Restore point', size: pendingRestore.size, by: session.name, records: recordCount() }, ...backups];
+      DB.log('Restore', 'Database Backup', `Database restored from ${pendingRestore.name}`, 'Critical', { persist: false });
+      const saved = await DB.save();
+      if (!saved) {
+        toast('The restore could not be saved. Try again.', 'error');
+        $('#restoreBtn').disabled = false;
+        return;
+      }
+      flash(`Data restored from ${pendingRestore.name}.`, 'success', 'Restore complete');
+      location.reload();
     });
 
     /* Settings */
@@ -3267,6 +3285,8 @@
       e.preventDefault();
       if (!canEditSettings) return;
       const next = Form.data(settingsForm);
+      delete next.twoFactor;
+      delete next.emailAlerts;
       const current = DB.settings;
       const LABELS = { autoBackup: 'Automatic backup', backupFrequency: 'Backup frequency', retention: 'Log retention', notifications: 'In-app notifications', emailAlerts: 'Email alerts', twoFactor: 'Two-factor authentication', sessionTimeout: 'Session timeout' };
       const changes = Object.keys(LABELS).filter((k) => k in next && String(next[k]) !== String(current[k]));
@@ -3284,12 +3304,16 @@
       const ok = await confirmDialog({ title: 'Reset all data?', message: 'Every senior, program, request, and log will be replaced with the original demo data. Download a backup first if you need your current records.', confirmText: 'Reset to demo data', icon: 'fa-triangle-exclamation' });
       if (!ok) return;
       DB.reset();
-      DB.log('Reset', 'Database Backup', 'All data reset to demo seed', 'Critical');
+      DB.log('Reset', 'Database Backup', 'All data reset to demo seed', 'Critical', { persist: false });
+      const saved = await DB.save();
+      if (!saved) {
+        toast('The reset could not be saved. Try again.', 'error');
+        return;
+      }
       flash('All data was reset to the demo dataset.', 'success', 'Data reset');
       location.reload();
     });
 
-    simulateAutoBackup();
     renderOverview();
     renderHistory();
     if (location.hash === '#settings') setTimeout(() => $('#settings').scrollIntoView({ behavior: 'smooth' }), 100);
@@ -3321,7 +3345,12 @@
       return;
     }
 
-    const remote = await Auth.currentUser();
+    const auth = await Auth.currentUser();
+    if (auth.reason === 'error') {
+      toast('The server could not be reached. Please refresh the page.', 'error');
+      return;
+    }
+    const remote = auth.ok ? auth.user : null;
     let session = Session.get();
     if (!remote) {
       localStorage.removeItem(SESSION_KEY);
@@ -3330,18 +3359,26 @@
       location.replace(LOGIN_URL);
       return;
     }
-    if (session && session.username === remote.username && Session.isExpired()) {
-      Session.end('expired');
-      return;
-    }
     if (!session || session.username !== remote.username) Session.start(remote, !!(session && session.remember));
     session = Session.get();
     if (!session || !PERMISSIONS[session.role]) {
       location.replace(LOGIN_URL);
       return;
     }
+
+    try {
+      await DB.connect();
+    } catch (err) {
+      console.error('[BSCIAMS] Could not load records.', err);
+      toast('Office records could not be loaded. Please refresh.', 'error');
+      return;
+    }
+
+    if (session.username === remote.username && Session.isExpired()) {
+      Session.end('expired');
+      return;
+    }
     Session.touch();
-    await DB.connect();
 
     renderSidebar();
     renderTopbar();
@@ -3361,5 +3398,8 @@
     showFlash();
   }
 
-  boot();
+  boot().catch((err) => {
+    console.error('[BSCIAMS] Startup failed.', err);
+    toast('The office system failed to start. Please refresh the page.', 'error');
+  });
 })();
