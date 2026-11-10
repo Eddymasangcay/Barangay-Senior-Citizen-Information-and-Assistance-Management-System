@@ -1,59 +1,38 @@
 """BSCIAMS web server.
 
-Serves the existing pages and checks sign-in. Senior records, programs,
-assistance, and audit logs stay in the browser. This server has no database.
+Serves the existing pages, checks sign-in, and stores office records in SQLite.
 """
 
-import hashlib
-import hmac
 import os
 from datetime import timedelta
 
 from flask import Flask, jsonify, redirect, request, send_from_directory, session
 
+import database
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 HTML_DIR = os.path.join(BASE_DIR, "html")
 CSS_DIR = os.path.join(BASE_DIR, "css")
 JS_DIR = os.path.join(BASE_DIR, "js")
 
-# Demo accounts. The browser no longer receives these passwords.
-ACCOUNTS = (
-    {"username": "emasangcay", "password": "Admin@123", "name": "Eduardo Masangcay", "role": "Administrator", "status": "Active"},
-    {"username": "jencampi", "password": "Admin@123", "name": "Jenzai Campilan", "role": "Administrator", "status": "Active"},
-    {"username": "jecab", "password": "Staff@123", "name": "Jeziel Cabarse", "role": "Barangay Staff", "status": "Active"},
-    {"username": "kmorta", "password": "Staff@123", "name": "Keith Morta", "role": "Barangay Staff", "status": "Active"},
-    {"username": "vrosalita", "password": "Health@123", "name": "Vincent Rosalita", "role": "Health Worker", "status": "Active"},
-)
-
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY") or "bscims-local-class-server"
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.environ.get("RENDER") == "true",
     PERMANENT_SESSION_LIFETIME=timedelta(hours=12),
+    MAX_CONTENT_LENGTH=16 * 1024 * 1024,
 )
 
+database.init_db()
 
-def _password_matches(stored, given):
-    if not isinstance(given, str):
-        return False
-    return hmac.compare_digest(
-        hashlib.sha256(stored.encode("utf-8")).digest(),
-        hashlib.sha256(given.encode("utf-8")).digest(),
-    )
-
-
-def _public_user(account):
-    return {"username": account["username"], "name": account["name"], "role": account["role"]}
-
-
-def _find_account(username):
-    key = str(username or "").strip().lower()
-    for account in ACCOUNTS:
-        if account["username"].lower() == key:
-            return account
-    return None
+PUBLIC_API = {
+    "/api/auth/login",
+    "/api/auth/logout",
+    "/api/auth/me",
+    "/api/activity",
+}
 
 
 def _origin_allowed():
@@ -63,23 +42,38 @@ def _origin_allowed():
     return origin == request.host_url.rstrip("/")
 
 
+def _require_login():
+    if "user" not in session:
+        return jsonify(ok=False, errors={"form": "Please sign in."}), 401
+    return None
+
+
 @app.before_request
 def guard_request():
-    if request.method == "POST" and not _origin_allowed():
-        return jsonify(ok=False, errors={"form": "This sign-in request was blocked."}), 403
+    if request.method in ("POST", "PUT", "PATCH", "DELETE") and not _origin_allowed():
+        return jsonify(ok=False, errors={"form": "This request was blocked."}), 403
     if request.path.startswith("/html/") and "user" not in session:
-        return redirect("/Main.html")
+        return redirect("/OfficeLanding.html")
+    if request.path.startswith("/api/") and request.path not in PUBLIC_API:
+        blocked = _require_login()
+        if blocked:
+            return blocked
     return None
 
 
 @app.get("/")
 def home():
-    return redirect("/Main.html")
+    return redirect("/OfficeLanding.html")
 
 
 @app.get("/Main.html")
+def login_page_legacy():
+    return redirect("/OfficeLanding.html")
+
+
+@app.get("/OfficeLanding.html")
 def login_page():
-    response = send_from_directory(BASE_DIR, "Main.html")
+    response = send_from_directory(BASE_DIR, "OfficeLanding.html")
     response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -110,14 +104,13 @@ def pages(filename):
 @app.post("/api/auth/login")
 def login():
     data = request.get_json(silent=True) or {}
-    account = _find_account(data.get("username"))
-    password = data.get("password")
-    if not account or not _password_matches(account["password"], password):
-        return jsonify(ok=False, errors={"form": "Invalid username or password."}), 401
-    if account["status"] != "Active":
+    account = database.authenticate(data.get("username"), data.get("password"))
+    if account and account.get("disabled"):
         return jsonify(ok=False, errors={"form": "This account is disabled. Contact your administrator."}), 403
+    if not account:
+        return jsonify(ok=False, errors={"form": "Invalid username or password."}), 401
     session.clear()
-    session["user"] = _public_user(account)
+    session["user"] = {"username": account["username"], "name": account["name"], "role": account["role"]}
     session.permanent = bool(data.get("remember"))
     return jsonify(ok=True, user=session["user"])
 
@@ -136,6 +129,33 @@ def current_user():
     return jsonify(ok=True, user=user)
 
 
+@app.get("/api/records")
+def get_records():
+    return jsonify(database.dump_store())
+
+
+@app.put("/api/records")
+def put_records():
+    payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        return jsonify(ok=False, errors={"form": "Invalid record payload."}), 400
+    return jsonify(ok=True, store=database.load_store(payload, imported=False))
+
+
+@app.post("/api/activity")
+def public_activity():
+    entry = request.get_json(silent=True) or {}
+    if entry.get("action") != "Failed Login":
+        blocked = _require_login()
+        if blocked:
+            return blocked
+    database.append_activity(entry)
+    return jsonify(ok=True)
+
+
 if __name__ == "__main__":
-    print("BSCIAMS is running at http://127.0.0.1:5000")
-    app.run(host="127.0.0.1", port=5000, debug=False)
+    port = int(os.environ.get("PORT", "5000"))
+    host = "0.0.0.0" if os.environ.get("PORT") else "127.0.0.1"
+    print(f"BSCIAMS is running at http://{host}:{port}")
+    print(f"SQLite file: {database.DB_PATH}")
+    app.run(host=host, port=port, debug=False)

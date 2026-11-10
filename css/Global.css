@@ -1,5 +1,5 @@
 @charset "UTF-8";
-@import url("lgu-components.css");
+@import url("LguComponents.css");
 /* ==========================================================================
    Barangay Senior Citizen Information and Assistance Management System
    global.css: design tokens, reset, app shell, shared components
@@ -1463,30 +1463,6 @@ legend.form-section__title { float: left; width: 100%; }
 .auth__row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; }
 .auth__alert { padding: 10px 12px; font-size: 13px; }
 .auth__alert[hidden] { display: none; }
-.auth__accounts {
-  display: grid;
-  gap: 6px;
-  margin: 0;
-  padding: 12px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-muted);
-  color: var(--text-muted);
-  font-size: 12px;
-}
-.auth__accounts dt { font-weight: 600; color: var(--text-dark); }
-.auth__accounts dd {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 6px 12px;
-  margin: 0;
-}
-.auth__accounts code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 11.5px;
-  color: var(--text-dark);
-}
 
 /* --------------------------------------------------------------------------
    16. Responsive

@@ -21,7 +21,7 @@
   const PAGE = document.body.dataset.page || '';
   const IS_LOGIN = PAGE === 'login';
   const HTML_BASE = IS_LOGIN ? 'html/' : '';
-  const LOGIN_URL = IS_LOGIN ? 'Main.html' : '../Main.html';
+  const LOGIN_URL = IS_LOGIN ? 'OfficeLanding.html' : '../OfficeLanding.html';
 
   const PUROKS = ['Purok 1', 'Purok 2', 'Purok 3', 'Purok 4', 'Purok 5', 'Purok 6', 'Purok 7'];
   const AGE_BRACKETS = ['60–64', '65–69', '70–74', '75–79', '80+'];
@@ -74,17 +74,17 @@
 
   const NAV = [
     { label: 'Overview', items: [
-      { page: 'dashboard', href: 'dashboard.html', icon: 'fa-gauge-high', text: 'Dashboard' },
-      { page: 'reports', href: 'reports-analytics.html', icon: 'fa-chart-pie', text: 'Reports & Analytics' }
+      { page: 'dashboard', href: 'Dashboard.html', icon: 'fa-gauge-high', text: 'Dashboard' },
+      { page: 'reports', href: 'ReportsAnalytics.html', icon: 'fa-chart-pie', text: 'Reports & Analytics' }
     ] },
     { label: 'Management', group: 'records', groupLabel: 'Records', groupIcon: 'fa-folder-open', items: [
-      { page: 'registry', href: 'senior-registry.html', icon: 'fa-users', text: 'Senior Registry' },
-      { page: 'programs', href: 'program-management.html', icon: 'fa-calendar-check', text: 'Programs & Events' },
-      { page: 'assistance', href: 'assistance-management.html', icon: 'fa-hand-holding-medical', text: 'Assistance', badge: 'pending' }
+      { page: 'registry', href: 'SeniorRegistry.html', icon: 'fa-users', text: 'Senior Registry' },
+      { page: 'programs', href: 'ProgramManagement.html', icon: 'fa-calendar-check', text: 'Programs & Events' },
+      { page: 'assistance', href: 'AssistanceManagement.html', icon: 'fa-hand-holding-medical', text: 'Assistance', badge: 'pending' }
     ] },
     { label: 'Administration', group: 'system', groupLabel: 'System & Security', groupIcon: 'fa-shield-halved', items: [
-      { page: 'audit', href: 'audit-trail.html', icon: 'fa-clock-rotate-left', text: 'Audit Trail' },
-      { page: 'backup', href: 'database-backup.html', icon: 'fa-database', text: 'Backup & Settings' }
+      { page: 'audit', href: 'AuditTrail.html', icon: 'fa-clock-rotate-left', text: 'Audit Trail' },
+      { page: 'backup', href: 'DatabaseBackup.html', icon: 'fa-database', text: 'Backup & Settings' }
     ] }
   ];
 
@@ -477,40 +477,87 @@
   }
 
   /* ------------------------------------------------------------------------
-     4. Data layer (localStorage)
+     4. Data layer (SQLite through Flask)
      ------------------------------------------------------------------------ */
   const MODULE_OF = { seniors: 'Senior Registry', programs: 'Program Management', assistance: 'Assistance Management', backups: 'Database Backup' };
   const MAX_LOGS = 1500;
+  const EMPTY_SETTINGS = {
+    autoBackup: true, backupFrequency: 'Daily', retention: '30',
+    notifications: true, emailAlerts: false, twoFactor: false, sessionTimeout: '30'
+  };
+
+  function clearBrowserRecords() {
+    try { localStorage.removeItem(STORE_KEY); } catch (_) {}
+  }
 
   const DB = {
     _data: null,
+    _saveQueue: Promise.resolve(),
+    usingServer: false,
 
-    load() {
-      if (this._data) return this._data;
-      try {
-        const raw = localStorage.getItem(STORE_KEY);
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed && parsed.version === DB_VERSION) { this._data = parsed; return parsed; }
-        }
-      } catch (err) {
-        console.warn('[BSCIAMS] Stored data is unreadable. Re-seeding.', err);
+    _blank() {
+      return {
+        version: DB_VERSION,
+        seededAt: new Date().toISOString(),
+        seniors: [], programs: [], assistance: [], logs: [], backups: [],
+        settings: { ...EMPTY_SETTINGS }
+      };
+    },
+
+    async _request(url, options) {
+      const res = await fetch(url, {
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: { Accept: 'application/json', ...(options && options.body ? { 'Content-Type': 'application/json' } : {}) },
+        ...options
+      });
+      const body = await res.json().catch(() => ({}));
+      return { res, body };
+    },
+
+    async connect() {
+      clearBrowserRecords();
+      const { res, body } = await this._request('/api/records');
+      if (!res.ok) {
+        toast('SQLite could not be reached. Start the server, then refresh.', 'error');
+        this.usingServer = false;
+        this._data = this._blank();
+        return this._data;
       }
-      this._data = buildSeed();
-      this.save();
+      this._data = body;
+      this.usingServer = true;
       return this._data;
     },
 
-    save() {
-      try {
-        localStorage.setItem(STORE_KEY, JSON.stringify(this._data));
-        document.dispatchEvent(new CustomEvent('db:change'));
-        return true;
-      } catch (err) {
-        console.error('[BSCIAMS] Unable to persist data.', err);
-        toast('Browser storage is full or unavailable. Your latest change may not persist.', 'error');
+    load() {
+      if (this._data) return this._data;
+      this._data = this._blank();
+      return this._data;
+    },
+
+    async persist() {
+      if (!this._data) return false;
+      if (IS_LOGIN) return true;
+      if (!this.usingServer) {
+        toast('The record could not be saved to SQLite. Check that the server is running.', 'error');
         return false;
       }
+      const { res, body } = await this._request('/api/records', { method: 'PUT', body: JSON.stringify(this._data) });
+      if (!res.ok) {
+        toast('The record could not be saved to SQLite. Check that the server is running.', 'error');
+        return false;
+      }
+      if (body.store && typeof body.store.dbFileBytes === 'number') this._data.dbFileBytes = body.store.dbFileBytes;
+      document.dispatchEvent(new CustomEvent('db:change'));
+      return true;
+    },
+
+    save() {
+      document.dispatchEvent(new CustomEvent('db:change'));
+      this._saveQueue = this._saveQueue.then(() => this.persist()).catch((err) => {
+        console.error('[BSCIAMS] Unable to persist data.', err);
+      });
+      return true;
     },
 
     all(col) { return this.load()[col] || []; },
@@ -557,6 +604,9 @@
       const data = this.load();
       data.logs.unshift(entry);
       if (data.logs.length > MAX_LOGS) data.logs.length = MAX_LOGS;
+      if (IS_LOGIN || action === 'Failed Login') {
+        this._request('/api/activity', { method: 'POST', body: JSON.stringify(entry) }).catch(() => {});
+      }
       if (opts.persist !== false) this.save();
       return entry;
     },
@@ -568,7 +618,7 @@
       this.save();
     },
 
-    sizeBytes() { return new Blob([JSON.stringify(this.load())]).size; },
+    sizeBytes() { return this.load().dbFileBytes || new Blob([JSON.stringify(this.load())]).size; },
 
     exportData() { return { ...this.load(), exportedAt: new Date().toISOString(), exportedBy: Session.get()?.name || 'System' }; },
 
@@ -584,18 +634,18 @@
     },
 
     importData(obj) {
-      const seed = buildSeed();
       this._data = {
         version: DB_VERSION,
-        seededAt: obj.seededAt || seed.seededAt,
+        seededAt: obj.seededAt || new Date().toISOString(),
         seniors: obj.seniors,
         programs: obj.programs,
         assistance: obj.assistance,
         logs: obj.logs,
         backups: Array.isArray(obj.backups) ? obj.backups : [],
-        settings: { ...seed.settings, ...(obj.settings || {}) }
+        settings: { ...EMPTY_SETTINGS, ...(obj.settings || {}) }
       };
-      return this.save();
+      this.save();
+      return true;
     },
 
     reset() { this._data = buildSeed(); return this.save(); }
@@ -1277,7 +1327,7 @@
 
     sidebar.innerHTML = `
       <div class="sidebar__brand">
-        <a class="brand" href="dashboard.html" aria-label="BSCIAMS home">
+        <a class="brand" href="Dashboard.html" aria-label="BSCIAMS home">
           <span class="brand__mark" aria-hidden="true"><i class="fa-solid fa-hand-holding-heart"></i></span>
           <span class="brand__text"><strong>BSCIAMS</strong><small>Barangay Senior Care</small></span>
         </a>
@@ -1352,7 +1402,7 @@
               <button type="button" class="link small" id="markAllRead">Mark all as read</button>
             </div>
             <div class="notif-list" id="notifList"></div>
-            <div class="notif-panel__foot"><a class="link small" href="assistance-management.html">View assistance queue</a></div>
+            <div class="notif-panel__foot"><a class="link small" href="AssistanceManagement.html">View assistance queue</a></div>
           </div>
         </div>
 
@@ -1368,9 +1418,9 @@
               <small>${esc(session.role)} · Signed in ${esc(relTime(session.loginAt).toLowerCase())}</small>
             </div>
             <div class="dropdown-menu">
-              <a class="dropdown-item" href="dashboard.html"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i>Dashboard</a>
-              <a class="dropdown-item" href="database-backup.html#settings"><i class="fa-solid fa-gear" aria-hidden="true"></i>System settings</a>
-              <a class="dropdown-item" href="audit-trail.html"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>Activity log</a>
+              <a class="dropdown-item" href="Dashboard.html"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i>Dashboard</a>
+              <a class="dropdown-item" href="DatabaseBackup.html#settings"><i class="fa-solid fa-gear" aria-hidden="true"></i>System settings</a>
+              <a class="dropdown-item" href="AuditTrail.html"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>Activity log</a>
               <div class="dropdown-divider"></div>
               <button type="button" class="dropdown-item dropdown-item--danger" data-action="logout"><i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i>Sign out</button>
             </div>
@@ -1400,17 +1450,17 @@
 
     const seniorHits = seniors.filter((s) => `${s.firstName} ${s.middleName} ${s.lastName} ${s.oscaId} ${s.purok}`.toLowerCase().includes(q))
       .slice(0, 5)
-      .map((s) => ({ group: 'Seniors', icon: 'fa-user', title: displayName(s), meta: `${s.oscaId} · ${s.purok} · ${ageOf(s.birthdate)} yrs`, href: `senior-registry.html?view=${encodeURIComponent(s.id)}` }));
+      .map((s) => ({ group: 'Seniors', icon: 'fa-user', title: displayName(s), meta: `${s.oscaId} · ${s.purok} · ${ageOf(s.birthdate)} yrs`, href: `SeniorRegistry.html?view=${encodeURIComponent(s.id)}` }));
 
     const programHits = DB.all('programs').filter((p) => `${p.title} ${p.venue} ${p.type}`.toLowerCase().includes(q))
       .slice(0, 4)
-      .map((p) => ({ group: 'Programs', icon: PROGRAM_ICONS[p.type] || 'fa-calendar', title: p.title, meta: `${p.type} · ${fmtDate(p.date)} · ${programStatus(p)}`, href: `program-management.html?open=${encodeURIComponent(p.id)}` }));
+      .map((p) => ({ group: 'Programs', icon: PROGRAM_ICONS[p.type] || 'fa-calendar', title: p.title, meta: `${p.type} · ${fmtDate(p.date)} · ${programStatus(p)}`, href: `ProgramManagement.html?open=${encodeURIComponent(p.id)}` }));
 
     const aidHits = DB.all('assistance').filter((a) => {
       const s = byId.get(a.seniorId);
       return `${a.id} ${a.type} ${a.status} ${s ? displayName(s) : ''}`.toLowerCase().includes(q);
     }).slice(0, 4)
-      .map((a) => ({ group: 'Assistance requests', icon: AID_ICONS[a.type] || 'fa-hand-holding-medical', title: `${a.id} · ${a.type}`, meta: `${displayName(byId.get(a.seniorId))} · ${fmtMoney(a.amount)} · ${a.status}`, href: `assistance-management.html?request=${encodeURIComponent(a.id)}` }));
+      .map((a) => ({ group: 'Assistance requests', icon: AID_ICONS[a.type] || 'fa-hand-holding-medical', title: `${a.id} · ${a.type}`, meta: `${displayName(byId.get(a.seniorId))} · ${fmtMoney(a.amount)} · ${a.status}`, href: `AssistanceManagement.html?request=${encodeURIComponent(a.id)}` }));
 
     return [...seniorHits, ...programHits, ...aidHits];
   }
@@ -1487,7 +1537,7 @@
         title: `Pending ${a.type.toLowerCase()} request`,
         text: `${displayName(byId.get(a.seniorId))} · ${fmtMoney(a.amount)}`,
         when: relTime(a.requestedAt), sort: new Date(a.requestedAt).getTime(),
-        href: `assistance-management.html?request=${encodeURIComponent(a.id)}`
+        href: `AssistanceManagement.html?request=${encodeURIComponent(a.id)}`
       });
     });
 
@@ -1498,7 +1548,7 @@
         id: `prog-${p.id}-${p.date}`, icon: PROGRAM_ICONS[p.type], tone: 'violet',
         title: p.title, text: `${fmtDate(p.date, { weekday: 'short', month: 'short', day: 'numeric' })} · ${p.venue}`,
         when: days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : `In ${days} days`, sort: Date.now() - days * 1000,
-        href: `program-management.html?open=${encodeURIComponent(p.id)}`
+        href: `ProgramManagement.html?open=${encodeURIComponent(p.id)}`
       });
     });
 
@@ -1513,7 +1563,7 @@
         id: `bday-${s.id}-${next.getFullYear()}`, icon: 'fa-cake-candles', tone: 'approved',
         title: `Birthday: ${displayName(s)}`, text: `Turns ${turning} on ${fmtDate(toISODate(next), { month: 'short', day: 'numeric' })}`,
         when: days === 0 ? 'Today' : `In ${days} day${days > 1 ? 's' : ''}`, sort: Date.now() - days * 1000 - 500,
-        href: `senior-registry.html?view=${encodeURIComponent(s.id)}`
+        href: `SeniorRegistry.html?view=${encodeURIComponent(s.id)}`
       });
     });
 
@@ -1525,7 +1575,7 @@
           id: `sec-${failed[0].id}`, icon: 'fa-shield-halved', tone: 'alert',
           title: `${failed.length} failed sign-in attempt${failed.length > 1 ? 's' : ''}`, text: 'In the last 24 hours. Review the audit trail.',
           when: relTime(failed[0].ts), sort: new Date(failed[0].ts).getTime(),
-          href: 'audit-trail.html?action=Failed%20Login'
+          href: 'AuditTrail.html?action=Failed%20Login'
         });
       }
     }
@@ -1692,7 +1742,7 @@
         Session._cache = null;
       } else {
         if (!samePerson) Session.start(remote, true);
-        location.replace('html/dashboard.html');
+        location.replace('html/Dashboard.html');
         return;
       }
     } else if (existing) {
@@ -1765,7 +1815,7 @@
       localStorage.setItem(LAST_USER_KEY, result.user.username);
       DB.log('Login', 'Authentication', `${result.user.name} signed in as ${result.user.role}`);
       flash(`Signed in as ${result.user.role}.`, 'success', `Welcome, ${result.user.name.split(' ')[0]}!`);
-      location.href = 'html/dashboard.html';
+      location.href = 'html/Dashboard.html';
     });
   };
 
@@ -1799,7 +1849,7 @@
       const d = parseDate(p.date);
       return `
         <li>
-          <a class="event-item" href="program-management.html?open=${encodeURIComponent(p.id)}">
+          <a class="event-item" href="ProgramManagement.html?open=${encodeURIComponent(p.id)}">
             <span class="event-item__date"><small>${d.toLocaleDateString('en-PH', { month: 'short' })}</small><strong>${d.getDate()}</strong></span>
             <span class="event-item__body">
               <strong>${esc(p.title)}</strong>
@@ -2275,7 +2325,7 @@
                   ${badge(a.status)}
                 </li>`).join('')}
             </ul>
-            ${requests.length > 6 ? `<a class="link small mt-2" style="display:inline-block" href="assistance-management.html?senior=${encodeURIComponent(s.id)}">View all ${requests.length} requests</a>` : ''}`
+            ${requests.length > 6 ? `<a class="link small mt-2" style="display:inline-block" href="AssistanceManagement.html?senior=${encodeURIComponent(s.id)}">View all ${requests.length} requests</a>` : ''}`
             : '<p class="muted">No assistance requests yet.</p>'}
         </section>
 
@@ -2287,13 +2337,13 @@
       $('#profileEdit').onclick = () => { if (can('senior.write')) openForm(s); };
       $('#profileEdit').disabled = !can('senior.write');
       $('#profilePrintId').onclick = () => printIdCards([s]);
-      $('#profileRequest').href = `assistance-management.html?action=new&senior=${encodeURIComponent(s.id)}`;
+      $('#profileRequest').href = `AssistanceManagement.html?action=new&senior=${encodeURIComponent(s.id)}`;
       Modal.open('profileDrawer');
     }
 
     $('#exportRegistry').addEventListener('click', () => {
       const list = sortBy(filtered(), state.sort, state.dir, getters);
-      downloadCSV(`senior-registry-${fileStamp()}.csv`, [
+      downloadCSV(`SeniorRegistry-${fileStamp()}.csv`, [
         ['OSCA ID', 'Last Name', 'First Name', 'Middle Name', 'Sex', 'Birthdate', 'Age', 'Civil Status', 'Purok', 'Address', 'Contact', 'Pension', 'PWD', 'Indigent', 'Conditions', 'Status', 'Registered'],
         ...list.map((s) => [s.oscaId, s.lastName, s.firstName, s.middleName, s.sex, s.birthdate, ageOf(s.birthdate), s.civilStatus, s.purok, s.address, s.contact, s.pension, s.pwd ? 'Yes' : 'No', s.indigent ? 'Yes' : 'No', (s.conditions || []).join('; '), s.status, fmtDate(s.registeredAt)])
       ]);
@@ -3046,7 +3096,7 @@
     $('#exportAudit').addEventListener('click', () => {
       if (!can('report.export')) return;
       const list = filtered();
-      downloadCSV(`audit-trail-${fileStamp()}.csv`, [
+      downloadCSV(`AuditTrail-${fileStamp()}.csv`, [
         ['Timestamp', 'User', 'Role', 'Action', 'Module', 'Details', 'IP Address', 'Severity'],
         ...list.map((l) => [fmtDateTime(l.ts), l.user, l.role, l.action, l.module, l.details, l.ip, l.severity])
       ]);
@@ -3090,7 +3140,7 @@
       const pct = Math.min(100, (size / STORAGE_QUOTA) * 100);
       $('#storageFill').style.width = `${Math.max(pct, 1)}%`;
       $('#storageFill').classList.toggle('is-warning', pct > 70);
-      $('#storageText').textContent = `${fmtBytes(size)} of ~5 MB browser storage used (${pct.toFixed(1)}%)`;
+      $('#storageText').textContent = `${fmtBytes(size)} stored in database/bscims.db`;
       $('#storageBar').setAttribute('aria-valuenow', pct.toFixed(1));
       $('#nextBackup').textContent = DB.settings.autoBackup ? `Next automatic backup: ${DB.settings.backupFrequency === 'Weekly' ? 'in 7 days' : 'tomorrow'} at 2:00 AM` : 'Automatic backups are turned off';
     }
@@ -3137,7 +3187,7 @@
       const info = $('#restoreFileInfo');
       if (!file) { info.hidden = true; return; }
       if (!/\.json$/i.test(file.name)) { showRestoreError('Please choose a .json backup file.'); return; }
-      if (file.size > STORAGE_QUOTA) { showRestoreError('This file is larger than the browser storage limit.'); return; }
+      if (file.size > STORAGE_QUOTA) { showRestoreError('This file is larger than 5 MB.'); return; }
       const reader = new FileReader();
       reader.onload = () => {
         let obj;
@@ -3246,13 +3296,15 @@
   window.App = App;
 
   async function boot() {
+    clearBrowserRecords();
     $$('[data-year]').forEach((el) => { el.textContent = new Date().getFullYear(); });
-    DB.load();
     Theme.bind();
 
     if (IS_LOGIN) {
+      DB.load();
       await Pages.login();
       App.ready = true;
+      document.dispatchEvent(new CustomEvent('bscims:ready'));
       return;
     }
 
@@ -3276,6 +3328,7 @@
       return;
     }
     Session.touch();
+    await DB.connect();
 
     renderSidebar();
     renderTopbar();
@@ -3291,6 +3344,7 @@
     }
     applyPermissions();
     App.ready = true;
+    document.dispatchEvent(new CustomEvent('bscims:ready'));
     showFlash();
   }
 

@@ -4,6 +4,7 @@
 (function () {
   'use strict';
 
+  function initDashboardCharts() {
   const App = window.App;
   if (!App || !App.ready) return;
 
@@ -156,4 +157,8 @@
       }
     });
   }
+  }
+
+  if (window.App && window.App.ready) initDashboardCharts();
+  else document.addEventListener('bscims:ready', initDashboardCharts, { once: true });
 })();

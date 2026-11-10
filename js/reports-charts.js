@@ -5,6 +5,7 @@
 (function () {
   'use strict';
 
+  function initReports() {
   const App = window.App;
   if (!App || !App.ready) return;
 
@@ -398,4 +399,8 @@
 
   setRange(12);
   render();
+  }
+
+  if (window.App && window.App.ready) initReports();
+  else document.addEventListener('bscims:ready', initReports, { once: true });
 })();

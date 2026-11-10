@@ -11,8 +11,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" referrerpolicy="no-referrer">
-  <link rel="stylesheet" href="../css/global.css">
-  <link rel="stylesheet" href="../css/database-backup.css">
+  <link rel="stylesheet" href="../css/Global.css">
+  <link rel="stylesheet" href="../css/DatabaseBackup.css">
 
   <script src="../js/global.js" defer></script>
 </head>
@@ -41,7 +41,7 @@
           </div>
           <div class="card mini-stat">
             <span class="mini-stat__icon"><i class="fa-solid fa-hard-drive" aria-hidden="true"></i></span>
-            <div><p class="mini-stat__label">Database size</p><p class="mini-stat__value" id="dbSize">—</p><p class="small muted">Stored in this browser</p></div>
+            <div><p class="mini-stat__label">Database size</p><p class="mini-stat__value" id="dbSize">—</p><p class="small muted">Stored in SQLite (bscims.db)</p></div>
           </div>
           <div class="card mini-stat">
             <span class="mini-stat__icon tone-info"><i class="fa-solid fa-table-list" aria-hidden="true"></i></span>
@@ -66,10 +66,10 @@
               <div class="card__body">
                 <div class="storage">
                   <div class="row row--between small">
-                    <span class="muted">Browser storage</span>
+                    <span class="muted">SQLite file</span>
                     <span class="muted" id="storageText"></span>
                   </div>
-                  <div class="progress progress--thin" id="storageBar" role="progressbar" aria-label="Browser storage used" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                  <div class="progress progress--thin" id="storageBar" role="progressbar" aria-label="SQLite file size" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
                     <div class="progress__fill" id="storageFill" style="width:0%"></div>
                   </div>
                 </div>
