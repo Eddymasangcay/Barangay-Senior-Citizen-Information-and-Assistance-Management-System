@@ -177,7 +177,7 @@ img, svg, canvas { display: block; max-width: 100%; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; background: none; border: 0; padding: 0; }
 ul, ol { margin: 0; padding: 0; list-style: none; }
-table { border-collapse: collapse; width: 100%; }
+table { border-collapse: separate; border-spacing: 0; width: 100%; }
 fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
 kbd { font-family: inherit; }
 [hidden] { display: none !important; }
@@ -792,18 +792,28 @@ body.no-scroll { overflow: hidden; }
   display: inline-grid;
   place-items: center;
   width: var(--touch-min); height: var(--touch-min);
+  margin: 0;
   border-radius: var(--radius-sm);
   color: var(--text-muted);
+  overflow: visible;
   transition: var(--transition-fast);
   flex-shrink: 0;
 }
-.icon-btn:hover:not(:disabled) { background: var(--surface-muted); color: var(--text-dark); }
+.icon-btn:hover:not(:disabled),
+.icon-btn:active:not(:disabled) { background: var(--surface-muted); color: var(--text-dark); }
 .icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .icon-btn--sm { width: 36px; height: 36px; font-size: 13px; }
-.icon-btn--danger:hover:not(:disabled) { background: var(--status-alert-soft); color: var(--status-alert-text); }
-.icon-btn--success:hover:not(:disabled) { background: var(--status-approved-soft); color: var(--status-approved-text); }
+.icon-btn--danger:hover:not(:disabled),
+.icon-btn--danger:active:not(:disabled) { background: var(--status-alert-soft); color: var(--status-alert-text); }
+.icon-btn--success:hover:not(:disabled),
+.icon-btn--success:active:not(:disabled) { background: var(--status-approved-soft); color: var(--status-approved-text); }
 
-.btn-group { display: inline-flex; gap: 4px; }
+.btn-group {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+}
 
 @media (pointer: coarse) {
   .btn--sm,
@@ -1063,8 +1073,6 @@ legend.form-section__title { float: left; width: 100%; }
 .table th:last-child,
 .table td:last-child { padding-right: 22px; }
 .table thead th {
-  position: sticky;
-  top: 0;
   background: var(--surface-muted);
   color: var(--text-muted);
   font-size: 11.5px;
@@ -1076,7 +1084,54 @@ legend.form-section__title { float: left; width: 100%; }
 .table tbody tr { transition: background-color 0.2s var(--ease); }
 .table tbody tr:hover { background: var(--table-row-hover); }
 .table tbody tr:last-child td { border-bottom: 0; }
-.table .actions { text-align: right; white-space: nowrap; }
+
+.table th.actions,
+.table td.actions,
+.table th.table__actions,
+.table td.table__actions {
+  width: 1%;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  text-align: right;
+  vertical-align: middle;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+.table__action-group {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  min-height: 36px;
+  vertical-align: middle;
+}
+
+.table__action-group .icon-btn,
+.table td.actions .icon-btn,
+.table td.table__actions .icon-btn {
+  width: 36px;
+  height: 36px;
+  margin: 0;
+}
+
+.table__action-group [data-tooltip] {
+  display: inline-flex;
+  align-items: center;
+}
+
+.table__action-group [data-tooltip] .icon-btn:disabled {
+  pointer-events: none;
+}
+
+/* Kill leftover CSS pseudo tooltips — they paint inside overflow:auto table wraps. */
+[data-tooltip]::before,
+[data-tooltip]::after {
+  content: none !important;
+  display: none !important;
+  border: 0 !important;
+  background: none !important;
+}
 
 .th-sort {
   display: inline-flex;

@@ -1,0 +1,44 @@
+/* ==========================================================================
+   StaffAccounts.css: office login administration
+   ========================================================================== */
+
+.content .page-header { align-items: flex-start; }
+.content .page-header > div:first-child { flex: 1 1 16rem; min-width: 0; }
+.content .page-actions { flex: 0 0 auto; margin-left: auto; }
+
+.staff-filters .field:not(.field--grow) { flex: 0 1 160px; }
+
+#staffBody .cell-person__text strong {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.staff-you {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--primary-toxic-violet);
+  background: var(--surface-white);
+  border: 1px solid var(--primary-toxic-violet);
+}
+
+#staffBody tr.is-you td { background: var(--primary-soft); }
+#staffBody tr.is-quiet td { opacity: 0.62; }
+
+#stUsername[readonly] {
+  color: var(--text-muted);
+  background: var(--surface-muted);
+  cursor: default;
+}
+
+@media (max-width: 767px) {
+  .staff-filters .field:not(.field--grow) { flex: 1 1 calc(50% - 6px); }
+  .cell-person { min-width: 0; }
+  .table__actions { min-width: 88px; }
+}

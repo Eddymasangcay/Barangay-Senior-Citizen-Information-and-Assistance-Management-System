@@ -83,6 +83,7 @@
     ] },
     { label: 'Administration', group: 'system', groupLabel: 'System & Security', groupIcon: 'fa-shield-halved', items: [
       { page: 'audit', href: '/AuditTrail', icon: 'fa-clock-rotate-left', text: 'Audit Trail', perm: 'audit.view' },
+      { page: 'staff', href: '/StaffAccounts', icon: 'fa-user-shield', text: 'Staff Accounts', perm: 'staff.manage' },
       { page: 'backup', href: '/DatabaseBackup', icon: 'fa-database', text: 'Backup & Settings', perm: 'backup.create' }
     ] }
   ];
@@ -1196,6 +1197,7 @@
       <span>${esc(text)}</span>
     </div>`;
   const emptyRow = (cols, title, text, icon) => `<tr><td colspan="${cols}">${emptyState(title, text, icon)}</td></tr>`;
+  const actionGroup = (...buttons) => `<div class="table__action-group">${buttons.filter(Boolean).join('')}</div>`;
 
   const skeletonRows = (cols, count = 6) => Array.from({ length: count }, () => `
     <tr>
@@ -1448,7 +1450,7 @@
         <div class="sidebar-user">
           ${avatar(session.name, 'avatar--solid')}
           <div class="sidebar-user__text"><strong>${esc(session.name)}</strong><small>${esc(session.role)}</small></div>
-          <button type="button" class="icon-btn icon-btn--sm" data-action="logout" aria-label="Sign out" title="Sign out"><i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i></button>
+          <button type="button" class="icon-btn icon-btn--sm" data-action="logout" aria-label="Sign out" data-tooltip="Sign out"><i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i></button>
         </div>
       </div>`;
 
@@ -1730,6 +1732,75 @@
   function closeDropdown(d) {
     d.classList.remove('is-open');
     d.querySelector('[data-dropdown-toggle]')?.setAttribute('aria-expanded', 'false');
+  }
+
+  function initTooltips() {
+    if (document.getElementById('appTooltip')) return;
+    const tip = document.createElement('div');
+    tip.id = 'appTooltip';
+    tip.className = 'app-tooltip';
+    tip.setAttribute('role', 'tooltip');
+    tip.hidden = true;
+    document.body.appendChild(tip);
+
+    let current = null;
+    const finePointer = () => window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+
+    const hide = () => {
+      current = null;
+      tip.hidden = true;
+      tip.classList.remove('is-visible', 'is-down', 'is-wrap');
+    };
+
+    const place = (el) => {
+      const text = (el.getAttribute('data-tooltip') || '').trim();
+      if (!text) { hide(); return; }
+      current = el;
+      tip.textContent = text;
+      tip.hidden = false;
+      tip.classList.toggle('is-wrap', text.length > 42);
+      const pad = 8;
+      const r = el.getBoundingClientRect();
+      tip.style.left = '0px';
+      tip.style.top = '0px';
+      const tw = tip.offsetWidth;
+      const th = tip.offsetHeight;
+      const topbar = document.querySelector('.topbar');
+      const topSafe = Math.max(pad, Math.ceil(topbar ? topbar.getBoundingClientRect().bottom : 0) + pad);
+      const preferUp = !el.dataset.tooltipPos && !!el.closest('table, .table-wrap, .program-card, .table__action-group');
+      let down = el.dataset.tooltipPos === 'down';
+      if (preferUp) down = false;
+      if (!down && r.top - th - pad < topSafe) down = true;
+      if (down && r.bottom + th + pad > window.innerHeight - pad) down = false;
+      let left = r.left + r.width / 2 - tw / 2;
+      left = Math.min(window.innerWidth - tw - pad, Math.max(pad, left));
+      const top = down ? r.bottom + pad : r.top - th - pad;
+      tip.style.left = `${Math.round(left)}px`;
+      tip.style.top = `${Math.round(top)}px`;
+      tip.classList.toggle('is-down', down);
+      tip.classList.add('is-visible');
+    };
+
+    document.addEventListener('pointerover', (e) => {
+      if (!finePointer()) return;
+      const el = e.target.closest('[data-tooltip]');
+      if (!el || el === current) return;
+      place(el);
+    });
+    document.addEventListener('pointerout', (e) => {
+      if (!current) return;
+      const el = e.target.closest('[data-tooltip]');
+      if (!el || el !== current) return;
+      if (e.relatedTarget && el.contains(e.relatedTarget)) return;
+      hide();
+    });
+    document.addEventListener('focusin', (e) => {
+      const el = e.target.closest('[data-tooltip]');
+      if (el) place(el);
+    });
+    document.addEventListener('focusout', () => hide());
+    document.addEventListener('scroll', hide, true);
+    window.addEventListener('resize', hide);
   }
 
   function initGlobalEvents() {
@@ -2245,12 +2316,12 @@
           <td>${eligibilityTags(s)}</td>
           <td>${badge(s.status)}</td>
           <td class="nowrap">${fmtDate(s.registeredAt)}</td>
-          <td class="actions table__actions">
-            <button type="button" class="icon-btn icon-btn--sm" data-action="view" data-id="${esc(s.id)}" aria-label="View profile of ${esc(displayName(s))}" data-tooltip="View profile"><i class="fa-regular fa-eye" aria-hidden="true"></i></button>
-            <button type="button" class="icon-btn icon-btn--sm" data-action="edit" data-id="${esc(s.id)}" aria-label="Edit ${esc(displayName(s))}" data-tooltip="Edit record" ${canWrite ? '' : 'disabled'}><i class="fa-regular fa-pen-to-square" aria-hidden="true"></i></button>
-            <button type="button" class="icon-btn icon-btn--sm" data-action="id" data-id="${esc(s.id)}" aria-label="Print ID for ${esc(displayName(s))}" data-tooltip="Print Senior Citizen ID"><i class="fa-solid fa-id-card" aria-hidden="true"></i></button>
-            <button type="button" class="icon-btn icon-btn--sm icon-btn--danger" data-action="delete" data-id="${esc(s.id)}" aria-label="Delete ${esc(displayName(s))}" data-tooltip="${canDelete ? 'Delete record' : 'Administrator only'}" ${canDelete ? '' : 'disabled'}><i class="fa-regular fa-trash-can" aria-hidden="true"></i></button>
-          </td>
+          <td class="actions table__actions">${actionGroup(
+            `<button type="button" class="icon-btn icon-btn--sm" data-action="view" data-id="${esc(s.id)}" aria-label="View profile of ${esc(displayName(s))}" data-tooltip="View profile"><i class="fa-regular fa-eye" aria-hidden="true"></i></button>`,
+            `<button type="button" class="icon-btn icon-btn--sm" data-action="edit" data-id="${esc(s.id)}" aria-label="Edit ${esc(displayName(s))}" data-tooltip="Edit record" ${canWrite ? '' : 'disabled'}><i class="fa-regular fa-pen-to-square" aria-hidden="true"></i></button>`,
+            `<button type="button" class="icon-btn icon-btn--sm" data-action="id" data-id="${esc(s.id)}" aria-label="Print ID for ${esc(displayName(s))}" data-tooltip="Print Senior Citizen ID"><i class="fa-solid fa-id-card" aria-hidden="true"></i></button>`,
+            `<button type="button" class="icon-btn icon-btn--sm icon-btn--danger" data-action="delete" data-id="${esc(s.id)}" aria-label="Delete ${esc(displayName(s))}" data-tooltip="${canDelete ? 'Delete record' : 'Administrator only'}" ${canDelete ? '' : 'disabled'}><i class="fa-regular fa-trash-can" aria-hidden="true"></i></button>`
+          )}</td>
         </tr>`).join('') || emptyRow(9, 'No seniors found', 'Try adjusting your filters or search term.', 'fa-user-slash');
       renderStats();
       syncBulk();
@@ -2628,9 +2699,9 @@
             <footer class="program-card__footer">
               <button type="button" class="btn btn--soft btn--sm" data-action="beneficiaries" data-id="${esc(p.id)}" ${canWrite && status === 'Upcoming' ? '' : 'disabled'}><i class="fa-solid fa-user-group" aria-hidden="true"></i>Beneficiaries</button>
               <div class="btn-group">
-                <button type="button" class="icon-btn icon-btn--sm" data-action="edit" data-id="${esc(p.id)}" aria-label="Edit ${esc(p.title)}" title="Edit" ${canWrite ? '' : 'disabled'}><i class="fa-regular fa-pen-to-square" aria-hidden="true"></i></button>
-                <button type="button" class="icon-btn icon-btn--sm" data-action="toggle-cancel" data-id="${esc(p.id)}" aria-label="${p.cancelled ? 'Reinstate' : 'Cancel'} ${esc(p.title)}" title="${p.cancelled ? 'Reinstate' : 'Cancel event'}" ${canWrite ? '' : 'disabled'}><i class="fa-solid ${p.cancelled ? 'fa-rotate-left' : 'fa-ban'}" aria-hidden="true"></i></button>
-                <button type="button" class="icon-btn icon-btn--sm icon-btn--danger" data-action="delete" data-id="${esc(p.id)}" aria-label="Delete ${esc(p.title)}" title="${can('program.delete') ? 'Delete' : 'Administrator only'}" ${can('program.delete') ? '' : 'disabled'}><i class="fa-regular fa-trash-can" aria-hidden="true"></i></button>
+                <button type="button" class="icon-btn icon-btn--sm" data-action="edit" data-id="${esc(p.id)}" aria-label="Edit ${esc(p.title)}" data-tooltip="Edit program" ${canWrite ? '' : 'disabled'}><i class="fa-regular fa-pen-to-square" aria-hidden="true"></i></button>
+                <button type="button" class="icon-btn icon-btn--sm" data-action="toggle-cancel" data-id="${esc(p.id)}" aria-label="${p.cancelled ? 'Reinstate' : 'Cancel'} ${esc(p.title)}" data-tooltip="${p.cancelled ? 'Reinstate event' : 'Cancel event'}" ${canWrite ? '' : 'disabled'}><i class="fa-solid ${p.cancelled ? 'fa-rotate-left' : 'fa-ban'}" aria-hidden="true"></i></button>
+                <button type="button" class="icon-btn icon-btn--sm icon-btn--danger" data-action="delete" data-id="${esc(p.id)}" aria-label="Delete ${esc(p.title)}" data-tooltip="${can('program.delete') ? 'Delete program' : 'Administrator only'}" ${can('program.delete') ? '' : 'disabled'}><i class="fa-regular fa-trash-can" aria-hidden="true"></i></button>
               </div>
             </footer>
           </article>`;
@@ -2882,15 +2953,19 @@
       const approve = can('assistance.approve');
       const view = `<button type="button" class="icon-btn icon-btn--sm" data-action="view" data-id="${esc(a.id)}" aria-label="View ${esc(a.id)}" data-tooltip="View details"><i class="fa-regular fa-eye" aria-hidden="true"></i></button>`;
       if (a.status === 'Pending') {
-        return `${view}
-          <button type="button" class="icon-btn icon-btn--sm icon-btn--success" data-action="Approved" data-id="${esc(a.id)}" aria-label="Approve ${esc(a.id)}" data-tooltip="${approve ? 'Approve request' : 'Requires approver role'}" ${approve ? '' : 'disabled'}><i class="fa-solid fa-check" aria-hidden="true"></i></button>
-          <button type="button" class="icon-btn icon-btn--sm icon-btn--danger" data-action="Denied" data-id="${esc(a.id)}" aria-label="Deny ${esc(a.id)}" data-tooltip="${approve ? 'Deny request' : 'Requires approver role'}" ${approve ? '' : 'disabled'}><i class="fa-solid fa-ban" aria-hidden="true"></i></button>`;
+        return actionGroup(
+          view,
+          `<button type="button" class="icon-btn icon-btn--sm icon-btn--success" data-action="Approved" data-id="${esc(a.id)}" aria-label="Approve ${esc(a.id)}" data-tooltip="${approve ? 'Approve request' : 'Requires approver role'}" ${approve ? '' : 'disabled'}><i class="fa-solid fa-check" aria-hidden="true"></i></button>`,
+          `<button type="button" class="icon-btn icon-btn--sm icon-btn--danger" data-action="Denied" data-id="${esc(a.id)}" aria-label="Deny ${esc(a.id)}" data-tooltip="${approve ? 'Deny request' : 'Requires approver role'}" ${approve ? '' : 'disabled'}><i class="fa-solid fa-ban" aria-hidden="true"></i></button>`
+        );
       }
       if (a.status === 'Approved') {
-        return `${view}
-          <button type="button" class="btn btn--soft btn--sm" data-action="Released" data-id="${esc(a.id)}" ${approve ? '' : 'disabled'}><i class="fa-solid fa-hand-holding-dollar" aria-hidden="true"></i> Release</button>`;
+        return actionGroup(
+          view,
+          `<button type="button" class="icon-btn icon-btn--sm icon-btn--success" data-action="Released" data-id="${esc(a.id)}" aria-label="Release ${esc(a.id)}" data-tooltip="${approve ? 'Release aid' : 'Requires approver role'}" ${approve ? '' : 'disabled'}><i class="fa-solid fa-hand-holding-dollar" aria-hidden="true"></i></button>`
+        );
       }
-      return view;
+      return actionGroup(view);
     };
 
     function render() {
@@ -3461,6 +3536,282 @@
     if (location.hash === '#settings') setTimeout(() => $('#settings').scrollIntoView({ behavior: 'smooth' }), 100);
   };
 
+  /* Staff accounts -------------------------------------------------------- */
+  Pages.staff = function () {
+    const restrict = () => {
+      $('#staffContent').hidden = true;
+      $('#staffRestricted').hidden = false;
+      $('#addStaffBtn').hidden = true;
+    };
+    if (!can('staff.manage')) { restrict(); return; }
+
+    const session = Session.get();
+    const form = $('#staffForm');
+    const modal = $('#staffModal');
+    const filters = $('#staffFilters');
+    let accounts = [];
+    let editing = null;
+    let busy = false;
+
+    const isSelf = (account) => (account?.username || '').toLowerCase() === (session.username || '').toLowerCase();
+    const activeAdmins = () => accounts.filter((a) => a.role === 'Administrator' && a.status === 'Active').length;
+    const isLastAdmin = (account) => account?.role === 'Administrator' && account?.status === 'Active' && activeAdmins() < 2;
+    const findAccount = (username) => accounts.find((a) => a.username.toLowerCase() === String(username || '').toLowerCase());
+
+    function roleTone(role) {
+      if (role === 'Administrator') return 'violet';
+      if (role === 'Health Worker') return 'info';
+      return 'neutral';
+    }
+
+    async function staffRequest(url, options) {
+      try {
+        return await DB._request(url, options);
+      } catch (_) {
+        return { res: { ok: false, status: 0 }, body: { errors: { form: 'The office database could not be reached.' } } };
+      }
+    }
+
+    function handleAuth(res) {
+      if (res.status === 401) {
+        if (!Session._ending) Session.end('expired');
+        return true;
+      }
+      if (res.status === 403) { restrict(); return true; }
+      return false;
+    }
+
+    async function loadStaff() {
+      const { res, body } = await staffRequest('/api/staff');
+      if (handleAuth(res)) return;
+      if (!res.ok) {
+        toast(body.errors?.form || 'Staff accounts could not be loaded.', 'error');
+        accounts = [];
+        render();
+        return;
+      }
+      accounts = body.staff || [];
+      render();
+    }
+
+    function visibleAccounts() {
+      const q = (filters.elements.q.value || '').trim().toLowerCase();
+      const role = filters.elements.role.value;
+      const status = filters.elements.status.value;
+      return accounts.filter((a) => {
+        if (role && a.role !== role) return false;
+        if (status && a.status !== status) return false;
+        if (!q) return true;
+        return `${a.name} ${a.username} ${a.role}`.toLowerCase().includes(q);
+      });
+    }
+
+    function render() {
+      const admins = activeAdmins();
+      const active = accounts.filter((a) => a.status === 'Active').length;
+      const rows = visibleAccounts();
+      $('#stTotal').textContent = accounts.length;
+      $('#stAdmins').textContent = admins;
+      $('#stActive').textContent = active;
+      $('#stDisabled').textContent = accounts.length - active;
+      $('#staffCount').textContent = rows.length === accounts.length
+        ? `${accounts.length} office account${accounts.length === 1 ? '' : 's'}`
+        : `${rows.length} of ${accounts.length} office accounts`;
+      $('#staffBody').innerHTML = rows.map((a) => {
+        const self = isSelf(a);
+        const lockToggle = self || (a.status === 'Active' && isLastAdmin(a));
+        const lockReason = self
+          ? 'You cannot disable the account you are signed in with'
+          : (a.status === 'Active' && isLastAdmin(a)
+            ? 'Keep at least one active Administrator'
+            : (a.status === 'Active' ? 'Disable account' : 'Enable account'));
+        const toggleBtn = `<button type="button" class="icon-btn icon-btn--sm ${a.status === 'Active' ? 'icon-btn--danger' : ''}" data-action="toggle" data-username="${esc(a.username)}" ${lockToggle ? 'disabled' : ''} aria-label="${a.status === 'Active' ? 'Disable' : 'Enable'} ${esc(a.name)}" ${lockToggle ? '' : `data-tooltip="${lockReason}"`}><i class="fa-solid ${a.status === 'Active' ? 'fa-user-lock' : 'fa-user-check'}" aria-hidden="true"></i></button>`;
+        return `
+          <tr class="${self ? 'is-you' : ''} ${a.status === 'Disabled' ? 'is-quiet' : ''}">
+            <td>
+              <div class="cell-person">
+                ${avatar(a.name, 'avatar--sm')}
+                <div class="cell-person__text">
+                  <strong>${esc(a.name)}${self ? '<span class="staff-you">You</span>' : ''}</strong>
+                </div>
+              </div>
+            </td>
+            <td class="nowrap mono">${esc(a.username)}</td>
+            <td>${badge(a.role, roleTone(a.role), 'data-plain')}</td>
+            <td>${badge(a.status)}</td>
+            <td class="actions table__actions">${actionGroup(
+              `<button type="button" class="icon-btn icon-btn--sm" data-action="edit" data-username="${esc(a.username)}" aria-label="Edit ${esc(a.name)}" data-tooltip="Edit account"><i class="fa-regular fa-pen-to-square" aria-hidden="true"></i></button>`,
+              lockToggle ? `<span data-tooltip="${esc(lockReason)}">${toggleBtn}</span>` : toggleBtn
+            )}</td>
+          </tr>`;
+      }).join('') || emptyRow(5, accounts.length ? 'No matching accounts' : 'No office accounts', accounts.length ? 'Try a different name, username, role, or status.' : 'Create an account so staff can sign in.', accounts.length ? 'fa-magnifying-glass' : 'fa-user-plus');
+    }
+
+    function setSecretVisibility(input, button, show) {
+      input.type = show ? 'text' : 'password';
+      button.setAttribute('aria-pressed', String(!!show));
+      button.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+      button.innerHTML = `<i class="fa-regular ${show ? 'fa-eye-slash' : 'fa-eye'}" aria-hidden="true"></i>`;
+    }
+
+    function setPasswordRequired(required) {
+      ['stPassword', 'stConfirm'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (required) el.setAttribute('required', '');
+        else el.removeAttribute('required');
+      });
+      $('#passwordReq').hidden = !required;
+      $('#confirmReq').hidden = !required;
+      $('#passwordHint').textContent = required ? 'At least 8 characters.' : 'Leave blank to keep the current password.';
+    }
+
+    function openForm(account) {
+      editing = account ? account.username : null;
+      const self = isSelf(account);
+      const lastAdmin = isLastAdmin(account);
+      Form.reset(form);
+      setSecretVisibility($('#stPassword'), $('#toggleStaffPassword'), false);
+      setSecretVisibility($('#stConfirm'), $('#toggleStaffConfirm'), false);
+      $('#statusField').hidden = !account;
+      form.elements.username.readOnly = !!account;
+      form.elements.role.disabled = !!lastAdmin;
+      form.elements.status.disabled = !account || self || lastAdmin;
+      $('#roleHint').hidden = !lastAdmin;
+      $('#statusHint').hidden = !self;
+      $('#usernameHint').hidden = !!account;
+      form.elements.name.removeAttribute('autofocus');
+      form.elements.username.toggleAttribute('autofocus', !account);
+      setPasswordRequired(!account);
+      $('#staffModalTitle').textContent = account ? 'Edit office account' : 'New office account';
+      $('#staffModalSubtitle').textContent = account
+        ? `Update ${account.name}. Leave the password blank to keep it unchanged.`
+        : 'This person will be able to sign in to BSCIAMS.';
+      $('#staffSubmit').innerHTML = account
+        ? '<i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Save changes'
+        : '<i class="fa-solid fa-user-plus" aria-hidden="true"></i> Create account';
+      if (account) Form.fill(form, { username: account.username, name: account.name, role: account.role, status: account.status, password: '', confirm: '' });
+      else Form.fill(form, { username: '', name: '', role: 'Barangay Staff', status: 'Active', password: '', confirm: '' });
+      Modal.open(modal);
+    }
+
+    function applyErrors(errors) {
+      Object.entries(errors || {}).forEach(([name, msg]) => {
+        if (name === 'form') { toast(msg, 'error'); return; }
+        const node = form.elements[name];
+        const el = node instanceof RadioNodeList ? node[0] : node;
+        if (el) Form.setError(el, msg);
+      });
+    }
+
+    function bindSecretToggle(input, button) {
+      button.addEventListener('click', () => setSecretVisibility(input, button, input.type === 'password'));
+    }
+    bindSecretToggle($('#stPassword'), $('#toggleStaffPassword'));
+    bindSecretToggle($('#stConfirm'), $('#toggleStaffConfirm'));
+
+    filters.addEventListener('submit', (e) => e.preventDefault());
+    filters.addEventListener('input', debounce(render, 120));
+    filters.addEventListener('change', render);
+
+    $('#addStaffBtn').addEventListener('click', () => openForm(null));
+    $('#staffBody').addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn || btn.disabled || busy) return;
+      const account = findAccount(btn.dataset.username);
+      if (!account) return;
+      if (btn.dataset.action === 'edit') {
+        openForm(account);
+        return;
+      }
+      if (isSelf(account) || (account.status === 'Active' && isLastAdmin(account))) return;
+      const disabling = account.status === 'Active';
+      const ok = await confirmDialog({
+        title: disabling ? `Disable ${account.username}?` : `Enable ${account.username}?`,
+        message: disabling
+          ? `${account.name} will not be able to sign in until the account is enabled again.`
+          : `${account.name} will be able to sign in again.`,
+        confirmText: disabling ? 'Disable account' : 'Enable account',
+        tone: disabling ? 'danger' : 'primary',
+        icon: disabling ? 'fa-user-lock' : 'fa-user-check'
+      });
+      if (!ok) return;
+      busy = true;
+      const { res, body } = await staffRequest(`/api/staff/${encodeURIComponent(account.username)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: disabling ? 'Disabled' : 'Active' })
+      });
+      busy = false;
+      if (handleAuth(res)) return;
+      if (!res.ok) {
+        toast(body.errors?.form || 'The account could not be updated.', 'error');
+        return;
+      }
+      await DB.log('Update', 'Staff Accounts', `${disabling ? 'Disabled' : 'Enabled'} office account ${account.username}`, 'Warning');
+      toast(`${account.name} is now ${disabling ? 'disabled' : 'active'}.`, disabling ? 'warning' : 'success', 'Account updated');
+      await loadStaff();
+    });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (busy) return;
+      const creating = !editing;
+      const current = creating ? null : findAccount(editing);
+      const valid = Form.validate(form, (d) => {
+        const errors = {};
+        if (creating && !d.password) errors.password = 'Password is required.';
+        if (d.password && d.password.length < 8) errors.password = 'Password must be at least 8 characters.';
+        if (d.password && d.password !== d.confirm) errors.confirm = 'Passwords do not match.';
+        if (!creating && isSelf(current) && d.status === 'Disabled') errors.status = 'You cannot disable the account you are signed in with.';
+        if (!creating && isLastAdmin(current) && d.role !== 'Administrator') errors.role = 'Keep at least one active Administrator.';
+        return errors;
+      });
+      if (!valid) return;
+      const d = Form.data(form);
+      const payload = { name: d.name, role: form.elements.role.value };
+      if (creating) {
+        payload.username = d.username;
+        payload.password = d.password;
+      } else {
+        payload.status = form.elements.status.value;
+        if (d.password) payload.password = d.password;
+      }
+      busy = true;
+      $('#staffSubmit').disabled = true;
+      const url = creating ? '/api/staff' : `/api/staff/${encodeURIComponent(editing)}`;
+      const { res, body } = await staffRequest(url, { method: creating ? 'POST' : 'PATCH', body: JSON.stringify(payload) });
+      busy = false;
+      $('#staffSubmit').disabled = false;
+      if (handleAuth(res)) return;
+      if (!res.ok) {
+        applyErrors(body.errors);
+        return;
+      }
+      await DB.log(creating ? 'Create' : 'Update', 'Staff Accounts', creating
+        ? `Created office account ${payload.username} (${payload.role})`
+        : `Updated office account ${editing}`, 'Warning');
+      Modal.close(modal);
+      toast(creating ? `${d.name} can now sign in.` : `${d.name}'s account was updated.`, 'success', creating ? 'Account created' : 'Account updated');
+      if (!creating && isSelf(current)) {
+        Session.start({
+          username: session.username,
+          name: d.name || session.name,
+          role: payload.role || session.role
+        }, session.remember);
+        Object.assign(session, Session.get());
+        renderSidebar();
+        renderTopbar();
+        applyPermissions();
+        if (!can('staff.manage')) {
+          location.replace('/Dashboard');
+          return;
+        }
+      }
+      await loadStaff();
+    });
+
+    loadStaff();
+  };
+
   /* ------------------------------------------------------------------------
      14. Bootstrap
      ------------------------------------------------------------------------ */
@@ -3478,6 +3829,7 @@
     clearBrowserRecords();
     $$('[data-year]').forEach((el) => { el.textContent = new Date().getFullYear(); });
     Theme.bind();
+    initTooltips();
 
     if (IS_LOGIN) {
       DB.load();
@@ -3501,7 +3853,9 @@
       location.replace(LOGIN_URL);
       return;
     }
-    if (!session || session.username !== remote.username) Session.start(remote, !!(session && session.remember));
+    if (!session || session.username !== remote.username || session.name !== remote.name || session.role !== remote.role) {
+      Session.start(remote, !!(session && session.remember));
+    }
     session = Session.get();
     if (!session || !PERMISSIONS[session.role]) {
       location.replace(LOGIN_URL);

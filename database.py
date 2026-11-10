@@ -75,6 +75,18 @@ class StoreError(ValueError):
     """Raised when a backup or save payload cannot be stored."""
 
 
+class StaffError(ValueError):
+    """Raised when a staff account cannot be created or updated."""
+
+    def __init__(self, errors):
+        self.errors = errors if isinstance(errors, dict) else {"form": str(errors)}
+        super().__init__(next(iter(self.errors.values())))
+
+
+STAFF_ROLES = ("Administrator", "Barangay Staff", "Health Worker")
+STAFF_STATUSES = ("Active", "Disabled")
+
+
 def using_postgres():
     return bool(os.environ.get("DATABASE_URL", "").strip())
 
@@ -794,3 +806,159 @@ def append_activity(entry, ip=None):
     with _WRITE_LOCK, connect() as conn:
         conn.execute(_LOG_UPSERT, _activity_row(entry, ip=ip))
     return True
+
+
+def _staff_record(row):
+    if not row:
+        return None
+    return {
+        "username": row["Username"],
+        "name": row["FullName"],
+        "role": row["Role"],
+        "status": row["AccountStatus"],
+    }
+
+
+def _normalize_username(value):
+    return str(value or "").strip()
+
+
+def _validate_staff_fields(username=None, password=None, name=None, role=None, status=None, require_password=False):
+    errors = {}
+    if username is not None:
+        key = _normalize_username(username)
+        if len(key) < 3:
+            errors["username"] = "Username must be at least 3 characters."
+        elif len(key) > 40:
+            errors["username"] = "Username is too long."
+        elif not re.fullmatch(r"[A-Za-z0-9._-]+", key):
+            errors["username"] = "Use letters, numbers, dots, hyphens, or underscores only."
+    if password is not None or require_password:
+        secret = str(password or "")
+        if len(secret) < 8:
+            errors["password"] = "Password must be at least 8 characters."
+        elif len(secret) > 128:
+            errors["password"] = "Password is too long."
+    if name is not None:
+        if not str(name or "").strip():
+            errors["name"] = "Full name is required."
+        elif len(str(name).strip()) > 80:
+            errors["name"] = "Full name is too long."
+    if role is not None and role not in STAFF_ROLES:
+        errors["role"] = "Choose Administrator, Barangay Staff, or Health Worker."
+    if status is not None and status not in STAFF_STATUSES:
+        errors["status"] = "Choose Active or Disabled."
+    return errors
+
+
+def _active_admin_count(conn, excluding=None):
+    statement = """
+        SELECT COUNT(*) AS n FROM StaffAccounts
+        WHERE Role = 'Administrator' AND AccountStatus = 'Active'
+    """
+    params = []
+    if excluding:
+        statement += " AND LOWER(Username) <> LOWER(?)"
+        params.append(excluding)
+    return int(conn.execute(statement, params).fetchone()["n"])
+
+
+def list_staff():
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT Username, FullName, Role, AccountStatus
+            FROM StaffAccounts
+            ORDER BY Role, FullName, Username
+            """
+        ).fetchall()
+    return [_staff_record(row) for row in rows]
+
+
+def get_staff(username):
+    key = _normalize_username(username)
+    if not key:
+        return None
+    with connect() as conn:
+        row = conn.execute(
+            """
+            SELECT Username, FullName, Role, AccountStatus
+            FROM StaffAccounts
+            WHERE LOWER(Username) = LOWER(?)
+            """,
+            (key,),
+        ).fetchone()
+    return _staff_record(row)
+
+
+def create_staff(username, password, name, role):
+    errors = _validate_staff_fields(
+        username=username,
+        password=password,
+        name=name,
+        role=role,
+        require_password=True,
+    )
+    if errors:
+        raise StaffError(errors)
+    key = _normalize_username(username)
+    full_name = str(name).strip()
+    with _WRITE_LOCK, connect() as conn:
+        taken = conn.execute(
+            "SELECT Username FROM StaffAccounts WHERE LOWER(Username) = LOWER(?)",
+            (key,),
+        ).fetchone()
+        if taken:
+            raise StaffError({"username": "This username is already in use."})
+        conn.execute(
+            """
+            INSERT INTO StaffAccounts (Username, PasswordHash, FullName, Role, AccountStatus)
+            VALUES (?, ?, ?, ?, 'Active')
+            """,
+            (key, generate_password_hash(password), full_name, role),
+        )
+    return get_staff(key)
+
+
+def update_staff(username, *, name=None, role=None, status=None, password=None):
+    current = get_staff(username)
+    if not current:
+        raise StaffError({"form": "That staff account was not found."})
+    errors = _validate_staff_fields(
+        name=current["name"] if name is None else name,
+        role=current["role"] if role is None else role,
+        status=current["status"] if status is None else status,
+        password=password,
+        require_password=password is not None,
+    )
+    if errors:
+        raise StaffError(errors)
+    next_name = current["name"] if name is None else str(name).strip()
+    next_role = current["role"] if role is None else role
+    next_status = current["status"] if status is None else status
+    with _WRITE_LOCK, connect() as conn:
+        would_remain_admin = (
+            next_role == "Administrator" and next_status == "Active"
+        )
+        if not would_remain_admin and current["role"] == "Administrator" and current["status"] == "Active":
+            if _active_admin_count(conn, excluding=current["username"]) < 1:
+                raise StaffError({"form": "Keep at least one active Administrator account."})
+        if password is None:
+            conn.execute(
+                """
+                UPDATE StaffAccounts
+                SET FullName = ?, Role = ?, AccountStatus = ?
+                WHERE LOWER(Username) = LOWER(?)
+                """,
+                (next_name, next_role, next_status, current["username"]),
+            )
+        else:
+            conn.execute(
+                """
+                UPDATE StaffAccounts
+                SET FullName = ?, Role = ?, AccountStatus = ?, PasswordHash = ?
+                WHERE LOWER(Username) = LOWER(?)
+                """,
+                (next_name, next_role, next_status, generate_password_hash(password), current["username"]),
+            )
+    return get_staff(current["username"])

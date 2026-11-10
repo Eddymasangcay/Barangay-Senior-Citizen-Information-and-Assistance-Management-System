@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#3D007A">
+  <script>try{var __t=localStorage.getItem('bscims_theme');if(__t)document.documentElement.setAttribute('data-theme',__t);}catch(e){}</script>
+  <title>Staff Accounts | BSCIAMS</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" referrerpolicy="no-referrer">
+  <link rel="stylesheet" href="/css/Global.css">
+  <link rel="stylesheet" href="/css/StaffAccounts.css">
+
+  <script src="/js/global.js" defer></script>
+</head>
+<body data-page="staff">
+  <a class="skip-link" href="#main">Skip to main content</a>
+
+  <div class="app">
+    <aside class="sidebar" id="sidebar" aria-label="Sidebar"></aside>
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+    <div class="main">
+      <header class="topbar" id="topbar"></header>
+
+      <main class="content" id="main" tabindex="-1">
+        <div class="page-header">
+          <div>
+            <h1 class="page-title">Staff Accounts</h1>
+            <p class="page-subtitle">Create office logins and assign roles. Passwords are hashed and are not included in backups.</p>
+          </div>
+          <div class="page-actions">
+            <button type="button" class="btn btn--primary" id="addStaffBtn" data-perm="staff.manage"><i class="fa-solid fa-user-plus" aria-hidden="true"></i>New account</button>
+          </div>
+        </div>
+
+        <div class="card restricted" id="staffRestricted" hidden>
+          <div class="empty-state">
+            <span class="empty-state__icon tone-alert"><i class="fa-solid fa-lock" aria-hidden="true"></i></span>
+            <strong>Access restricted</strong>
+            <span>Only Administrators can create and manage office accounts.</span>
+            <a class="btn btn--secondary mt-4" href="/Dashboard"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i>Back to dashboard</a>
+          </div>
+        </div>
+
+        <div id="staffContent">
+          <section class="grid grid--4 mb-4" aria-label="Account summary">
+            <div class="card mini-stat">
+              <span class="mini-stat__icon"><i class="fa-solid fa-users-gear" aria-hidden="true"></i></span>
+              <div><p class="mini-stat__label">Office accounts</p><p class="mini-stat__value" id="stTotal">—</p></div>
+            </div>
+            <div class="card mini-stat">
+              <span class="mini-stat__icon tone-approved"><i class="fa-solid fa-user-shield" aria-hidden="true"></i></span>
+              <div><p class="mini-stat__label">Administrators</p><p class="mini-stat__value" id="stAdmins">—</p></div>
+            </div>
+            <div class="card mini-stat">
+              <span class="mini-stat__icon tone-info"><i class="fa-solid fa-user-check" aria-hidden="true"></i></span>
+              <div><p class="mini-stat__label">Active</p><p class="mini-stat__value" id="stActive">—</p></div>
+            </div>
+            <div class="card mini-stat">
+              <span class="mini-stat__icon tone-alert"><i class="fa-solid fa-user-lock" aria-hidden="true"></i></span>
+              <div><p class="mini-stat__label">Disabled</p><p class="mini-stat__value" id="stDisabled">—</p></div>
+            </div>
+          </section>
+
+          <section class="card">
+            <header class="card__header">
+              <div>
+                <h2 class="card__title">Office logins</h2>
+                <p class="card__subtitle" id="staffCount">Loading…</p>
+              </div>
+            </header>
+            <form class="filter-bar staff-filters" id="staffFilters" role="search" aria-label="Filter office accounts">
+              <div class="field field--grow">
+                <label class="label" for="stSearch">Search</label>
+                <div class="input-icon">
+                  <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                  <input class="input" type="search" id="stSearch" name="q" placeholder="Name or username…" autocomplete="off">
+                </div>
+              </div>
+              <div class="field">
+                <label class="label" for="stRoleFilter">Role</label>
+                <select class="select" id="stRoleFilter" name="role">
+                  <option value="">All roles</option>
+                  <option>Administrator</option>
+                  <option>Barangay Staff</option>
+                  <option>Health Worker</option>
+                </select>
+              </div>
+              <div class="field">
+                <label class="label" for="stStatusFilter">Status</label>
+                <select class="select" id="stStatusFilter" name="status">
+                  <option value="">All statuses</option>
+                  <option>Active</option>
+                  <option>Disabled</option>
+                </select>
+              </div>
+            </form>
+            <div class="table-wrap">
+              <table class="table">
+                <caption class="sr-only">Staff accounts</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Account</th>
+                    <th scope="col">Username</th>
+                    <th scope="col">Role</th>
+                    <th scope="col">Status</th>
+                    <th scope="col" class="actions table__actions"><span class="sr-only">Actions</span></th>
+                  </tr>
+                </thead>
+                <tbody id="staffBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <div class="modal" id="staffModal" aria-hidden="true">
+    <div class="modal__backdrop" data-close></div>
+    <form class="modal__dialog" id="staffForm" role="dialog" aria-modal="true" aria-labelledby="staffModalTitle" autocomplete="off" novalidate>
+      <header class="modal__header">
+        <div>
+          <h2 class="modal__title" id="staffModalTitle">New office account</h2>
+          <p class="modal__subtitle" id="staffModalSubtitle">This person will be able to sign in to BSCIAMS.</p>
+        </div>
+        <button type="button" class="icon-btn" data-close aria-label="Close dialog"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+      </header>
+      <div class="modal__body">
+        <div class="form-grid">
+          <div class="field">
+            <label class="label" for="stUsername">Username <span class="req" aria-hidden="true">*</span></label>
+            <input class="input" id="stUsername" name="username" required minlength="3" maxlength="40" pattern="[A-Za-z0-9._-]+" title="Letters, numbers, dots, hyphens, or underscores" autocomplete="off" spellcheck="false" autocapitalize="off">
+            <small class="muted" id="usernameHint">Letters, numbers, dots, hyphens, or underscores.</small>
+            <small class="field__error"></small>
+          </div>
+          <div class="field">
+            <label class="label" for="stName">Full name <span class="req" aria-hidden="true">*</span></label>
+            <input class="input" id="stName" name="name" required maxlength="80" autocomplete="off">
+            <small class="field__error"></small>
+          </div>
+          <div class="field">
+            <label class="label" for="stRole">Role <span class="req" aria-hidden="true">*</span></label>
+            <select class="select" id="stRole" name="role" required>
+              <option value="Barangay Staff">Barangay Staff</option>
+              <option value="Health Worker">Health Worker</option>
+              <option value="Administrator">Administrator</option>
+            </select>
+            <small class="muted" id="roleHint" hidden>Keep at least one active Administrator.</small>
+            <small class="field__error"></small>
+          </div>
+          <div class="field" id="statusField" hidden>
+            <label class="label" for="stStatus">Status</label>
+            <select class="select" id="stStatus" name="status">
+              <option value="Active">Active</option>
+              <option value="Disabled">Disabled</option>
+            </select>
+            <small class="muted" id="statusHint" hidden>You cannot disable the account you are signed in with.</small>
+            <small class="field__error"></small>
+          </div>
+          <div class="field">
+            <label class="label" for="stPassword">Password <span class="req" id="passwordReq" aria-hidden="true">*</span></label>
+            <div class="input-icon">
+              <i class="fa-solid fa-lock" aria-hidden="true"></i>
+              <input class="input" id="stPassword" name="password" type="password" minlength="8" maxlength="128" autocomplete="new-password" aria-describedby="passwordHint">
+              <button type="button" class="input-action" id="toggleStaffPassword" aria-label="Show password" aria-pressed="false">
+                <i class="fa-regular fa-eye" aria-hidden="true"></i>
+              </button>
+            </div>
+            <small class="muted" id="passwordHint">At least 8 characters.</small>
+            <small class="field__error"></small>
+          </div>
+          <div class="field">
+            <label class="label" for="stConfirm">Confirm password <span class="req" id="confirmReq" aria-hidden="true">*</span></label>
+            <div class="input-icon">
+              <i class="fa-solid fa-lock" aria-hidden="true"></i>
+              <input class="input" id="stConfirm" name="confirm" type="password" minlength="8" maxlength="128" autocomplete="new-password">
+              <button type="button" class="input-action" id="toggleStaffConfirm" aria-label="Show password" aria-pressed="false">
+                <i class="fa-regular fa-eye" aria-hidden="true"></i>
+              </button>
+            </div>
+            <small class="field__error"></small>
+          </div>
+        </div>
+      </div>
+      <footer class="modal__footer">
+        <button type="button" class="btn btn--secondary" data-close>Cancel</button>
+        <button type="submit" class="btn btn--primary" id="staffSubmit"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>Save account</button>
+      </footer>
+    </form>
+  </div>
+</body>
+</html>

@@ -47,6 +47,7 @@ OFFICE_PAGES = frozenset({
     "ProgramManagement",
     "AssistanceManagement",
     "AuditTrail",
+    "StaffAccounts",
     "DatabaseBackup",
 })
 
@@ -88,12 +89,37 @@ def _require_login():
     return None
 
 
+def _current_account():
+    user = session.get("user") or {}
+    return database.get_staff(user.get("username"))
+
+
+def _require_admin():
+    blocked = _require_login()
+    if blocked:
+        return blocked
+    account = _current_account()
+    if not account or account["status"] != "Active" or account["role"] != "Administrator":
+        return jsonify(ok=False, errors={"form": "Only Administrators can manage staff accounts."}), 403
+    return None
+
+
 @app.before_request
 def guard_request():
     if request.method in ("POST", "PUT", "PATCH", "DELETE") and not _origin_allowed():
         return jsonify(ok=False, errors={"form": "This request was blocked."}), 403
     if _office_name(request.path) in OFFICE_PAGES and "user" not in session:
         return redirect("/OfficeLanding")
+    if "user" in session and (
+        request.path.startswith("/api/") or _office_name(request.path) in OFFICE_PAGES
+    ):
+        account = _current_account()
+        if not account or account["status"] != "Active":
+            session.clear()
+            session.modified = True
+            if request.path.startswith("/api/"):
+                return jsonify(ok=False, errors={"form": "Please sign in."}), 401
+            return redirect("/OfficeLanding?signedout=1")
     if request.path.startswith("/api/") and request.path not in PUBLIC_API:
         blocked = _require_login()
         if blocked:
@@ -184,7 +210,14 @@ def current_user():
     user = session.get("user")
     if not user:
         return jsonify(ok=False), 401
-    return jsonify(ok=True, user=user)
+    account = database.get_staff(user.get("username"))
+    if not account or account["status"] != "Active":
+        session.clear()
+        session.modified = True
+        return jsonify(ok=False), 401
+    live = {"username": account["username"], "name": account["name"], "role": account["role"]}
+    session["user"] = live
+    return jsonify(ok=True, user=live)
 
 
 @app.get("/api/records")
@@ -202,6 +235,69 @@ def put_records():
     except database.StoreError as exc:
         return jsonify(ok=False, errors={"form": str(exc)}), 400
     return jsonify(ok=True, store=store)
+
+
+@app.get("/api/staff")
+def staff_list():
+    blocked = _require_admin()
+    if blocked:
+        return blocked
+    return jsonify(ok=True, staff=database.list_staff())
+
+
+@app.post("/api/staff")
+def staff_create():
+    blocked = _require_admin()
+    if blocked:
+        return blocked
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify(ok=False, errors={"form": "Invalid staff payload."}), 400
+    try:
+        account = database.create_staff(
+            data.get("username"),
+            data.get("password"),
+            data.get("name"),
+            data.get("role"),
+        )
+    except database.StaffError as exc:
+        return jsonify(ok=False, errors=exc.errors), 400
+    return jsonify(ok=True, staff=account), 201
+
+
+@app.patch("/api/staff/<username>")
+def staff_update(username):
+    blocked = _require_admin()
+    if blocked:
+        return blocked
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data, dict):
+        return jsonify(ok=False, errors={"form": "Invalid staff payload."}), 400
+    actor = (session.get("user") or {}).get("username") or ""
+    if actor.lower() == username.lower() and data.get("status") == "Disabled":
+        return jsonify(ok=False, errors={"form": "You cannot disable the account you are signed in with."}), 400
+    password = data.get("password")
+    if password == "":
+        password = None
+    try:
+        account = database.update_staff(
+            username,
+            name=data.get("name"),
+            role=data.get("role"),
+            status=data.get("status"),
+            password=password,
+        )
+    except database.StaffError as exc:
+        status = 404 if exc.errors.get("form") == "That staff account was not found." else 400
+        return jsonify(ok=False, errors=exc.errors), status
+    if actor.lower() == account["username"].lower():
+        session["user"] = {
+            "username": account["username"],
+            "name": account["name"],
+            "role": account["role"],
+        }
+        session.modified = True
+    return jsonify(ok=True, staff=account)
 
 
 @app.post("/api/activity")

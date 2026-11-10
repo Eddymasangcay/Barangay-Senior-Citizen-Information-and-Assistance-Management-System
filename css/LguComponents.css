@@ -7,7 +7,7 @@
    2. Floating bulk action bar
    3. Skeleton loaders
    4. Interactive status badges & assistance tracker
-   5. Sticky table columns & [data-tooltip]
+   5. Sticky table columns & floating tooltips
    ========================================================================== */
 
 /* --------------------------------------------------------------------------
@@ -476,20 +476,21 @@ html[data-theme="dark"] .skeleton::after {
    -------------------------------------------------------------------------- */
 .table-wrap--sticky {
   position: relative;
-  isolation: isolate;
 }
 
 .table--sticky .table__select,
 .table--sticky .table__actions {
   position: sticky;
-  z-index: 2;
+  top: auto;
+  bottom: auto;
+  z-index: 1;
   background: var(--surface-white);
   box-shadow: none;
 }
 
 .table--sticky thead .table__select,
 .table--sticky thead .table__actions {
-  z-index: 3;
+  z-index: 2;
   background: var(--surface-muted);
 }
 
@@ -498,19 +499,20 @@ html[data-theme="dark"] .skeleton::after {
   width: 56px;
   min-width: 56px;
   text-align: center;
-  box-shadow: 6px 0 10px -8px rgba(30, 26, 36, 0.18);
 }
 
 .table--sticky .table__actions {
   right: 0;
-  box-shadow: -6px 0 10px -8px rgba(30, 26, 36, 0.18);
 }
 
 .table--sticky tbody tr:hover .table__select,
-.table--sticky tbody tr:hover .table__actions,
+.table--sticky tbody tr:hover .table__actions {
+  background: var(--table-row-hover, #FBFAFC);
+}
+
 .table--sticky tbody tr.is-selected .table__select,
 .table--sticky tbody tr.is-selected .table__actions {
-  background: var(--table-row-hover, #FBFAFC);
+  background: var(--primary-soft);
 }
 
 .table tbody tr.is-selected { background: var(--primary-soft); }
@@ -531,25 +533,11 @@ html[data-theme="dark"] .skeleton::after {
   cursor: pointer;
 }
 
-/* Attribute tooltips --------------------------------------------------- */
-[data-tooltip] { position: relative; }
-
-[data-tooltip]::after,
-[data-tooltip]::before {
-  position: absolute;
-  left: 50%;
-  z-index: 80;
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-  transform: translate(-50%, 4px);
-  transition: opacity 0.2s var(--ease), transform 0.2s var(--ease), visibility 0s linear 0.2s;
-}
-
-[data-tooltip]::after {
-  content: attr(data-tooltip);
-  bottom: calc(100% + 8px);
-  max-width: 240px;
+/* Floating tooltips (body-level so table overflow cannot clip them) ---- */
+.app-tooltip {
+  position: fixed;
+  z-index: calc(var(--z-toast, 70) + 10);
+  max-width: min(240px, calc(100vw - 16px));
   padding: 6px 10px;
   border-radius: 8px;
   background: var(--text-dark);
@@ -561,31 +549,26 @@ html[data-theme="dark"] .skeleton::after {
   text-transform: none;
   white-space: nowrap;
   box-shadow: var(--shadow-pop);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(6px);
+  transition: opacity 0.2s var(--ease), transform 0.2s var(--ease), visibility 0s linear 0.2s;
 }
 
-[data-tooltip]::before {
-  content: "";
-  bottom: calc(100% + 2px);
-  border: 6px solid transparent;
-  border-top-color: var(--text-dark);
+.app-tooltip.is-down {
+  transform: translateY(-6px);
 }
 
-[data-tooltip]:hover::after,
-[data-tooltip]:hover::before,
-[data-tooltip]:focus-visible::after,
-[data-tooltip]:focus-visible::before {
+.app-tooltip.is-visible {
   opacity: 1;
   visibility: visible;
-  transform: translate(-50%, 0);
+  transform: translateY(0);
   transition: opacity 0.2s var(--ease), transform 0.2s var(--ease), visibility 0s;
 }
 
-[data-tooltip-pos="down"]::after { top: calc(100% + 8px); bottom: auto; }
-[data-tooltip-pos="down"]::before {
-  top: calc(100% + 2px);
-  bottom: auto;
-  border-top-color: transparent;
-  border-bottom-color: var(--text-dark);
+.app-tooltip.is-wrap {
+  white-space: normal;
 }
 
 /* Theme toggle --------------------------------------------------------- */
@@ -633,18 +616,18 @@ html[data-theme="dark"] .skeleton::after {
   }
   .bulk-bar.is-visible { transform: translate(0, 0); }
   .bulk-bar__action { flex: 1 1 calc(50% - 6px); }
-  [data-tooltip]::after { white-space: normal; width: max-content; max-width: 180px; }
+  .app-tooltip { white-space: normal; max-width: min(180px, calc(100vw - 16px)); }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .skeleton::after { animation: none; background: transparent; }
   .bulk-bar,
-  [data-tooltip]::after,
-  [data-tooltip]::before { transition: none; }
+  .app-tooltip { transition: none; }
 }
 
 @media print {
   .bulk-bar,
   .theme-toggle,
-  .skeleton { display: none !important; }
+  .skeleton,
+  .app-tooltip { display: none !important; }
 }
