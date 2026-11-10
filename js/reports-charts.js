@@ -65,6 +65,21 @@
     render();
   });
 
+  function releasedAt(a) {
+    const hit = [...(a.history || [])].reverse().find((h) => h.status === 'Released');
+    return hit?.at || (a.status === 'Released' ? a.updatedAt : '');
+  }
+
+  function inRange(iso) {
+    if (!iso) return false;
+    const parsed = new Date(iso);
+    if (isNaN(parsed)) return false;
+    const day = toISODate(parsed);
+    if (state.from && day < state.from) return false;
+    if (state.to && day > state.to) return false;
+    return true;
+  }
+
   /* Data ----------------------------------------------------------------- */
   function dataset() {
     const all = DB.all('seniors');
@@ -73,10 +88,7 @@
     const assistance = DB.all('assistance').filter((a) => {
       const s = map.get(a.seniorId);
       if (state.purok && (!s || s.purok !== state.purok)) return false;
-      const day = toISODate(new Date(a.requestedAt));
-      if (state.from && day < state.from) return false;
-      if (state.to && day > state.to) return false;
-      return true;
+      return inRange(a.requestedAt) || (a.status === 'Released' && inRange(releasedAt(a)));
     });
     return { seniors, assistance, map };
   }
@@ -217,7 +229,7 @@
 
     /* Sex ratio */
     const f = seniors.filter((s) => s.sex === 'Female').length;
-    const m = seniors.length - f;
+    const m = seniors.filter((s) => s.sex === 'Male').length;
     upsert('gender', {
       type: 'pie',
       data: { labels: ['Female', 'Male'], datasets: [{ data: [f, m], backgroundColor: [P[0], P[2]], borderColor: '#fff', borderWidth: 3, hoverOffset: 4 }] },
@@ -264,7 +276,7 @@
 
     /* Disbursement */
     const months = monthBuckets();
-    const releasedByMonth = months.map((mo) => assistance.filter((a) => a.status === 'Released' && monthKey(a.updatedAt) === mo.key).reduce((sum, a) => sum + a.amount, 0));
+    const releasedByMonth = months.map((mo) => assistance.filter((a) => a.status === 'Released' && monthKey(releasedAt(a) || a.updatedAt) === mo.key).reduce((sum, a) => sum + a.amount, 0));
     const filedByMonth = months.map((mo) => assistance.filter((a) => monthKey(a.requestedAt) === mo.key).length);
     $('#disbursementSubtitle').textContent = `Released amount and requests filed per month · ${fmtDate(state.from)} – ${fmtDate(state.to)}`;
     upsert('disbursement', {

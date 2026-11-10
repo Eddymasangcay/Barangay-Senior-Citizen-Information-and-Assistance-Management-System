@@ -82,8 +82,8 @@
       { page: 'assistance', href: '/AssistanceManagement', icon: 'fa-hand-holding-medical', text: 'Assistance', badge: 'pending' }
     ] },
     { label: 'Administration', group: 'system', groupLabel: 'System & Security', groupIcon: 'fa-shield-halved', items: [
-      { page: 'audit', href: '/AuditTrail', icon: 'fa-clock-rotate-left', text: 'Audit Trail' },
-      { page: 'backup', href: '/DatabaseBackup', icon: 'fa-database', text: 'Backup & Settings' }
+      { page: 'audit', href: '/AuditTrail', icon: 'fa-clock-rotate-left', text: 'Audit Trail', perm: 'audit.view' },
+      { page: 'backup', href: '/DatabaseBackup', icon: 'fa-database', text: 'Backup & Settings', perm: 'backup.create' }
     ] }
   ];
 
@@ -144,6 +144,12 @@
   const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
   ));
+  const safeImageSrc = (src) => {
+    const value = String(src || '').trim();
+    if (/^data:image\/(jpeg|jpg|png|webp|gif);base64,/i.test(value)) return value;
+    if (/^https?:\/\//i.test(value) && !/[\s"'<>]/.test(value)) return value;
+    return '';
+  };
   const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const uid = (prefix) => `${prefix}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`.toUpperCase();
   const pad = (n, len = 2) => String(n).padStart(len, '0');
@@ -492,6 +498,7 @@
   const DB = {
     _data: null,
     _saveQueue: Promise.resolve(),
+    _replaceAudit: false,
     usingServer: false,
 
     _blank() {
@@ -501,6 +508,15 @@
         seniors: [], programs: [], assistance: [], logs: [], backups: [],
         settings: { ...EMPTY_SETTINGS }
       };
+    },
+
+    _snapshot() {
+      return JSON.parse(JSON.stringify(this.load()));
+    },
+
+    _restore(snap) {
+      this._data = snap;
+      document.dispatchEvent(new CustomEvent('db:change'));
     },
 
     async _request(url, options) {
@@ -549,16 +565,21 @@
         toast('The record could not be saved. Check that the server is running.', 'error');
         return false;
       }
-      const { res, body } = await this._request('/api/records', { method: 'PUT', body: JSON.stringify(this._data) });
+      const payload = { ...this._data, replaceAudit: !!this._replaceAudit };
+      const { res, body } = await this._request('/api/records', { method: 'PUT', body: JSON.stringify(payload) });
       if (res.status === 401) {
         if (!Session._ending) Session.end('expired');
         return false;
       }
       if (!res.ok) {
-        toast('The record could not be saved. Check that the server is running.', 'error');
+        const reason = body.errors && body.errors.form;
+        toast(reason || 'The record could not be saved. Check that the server is running.', 'error');
         return false;
       }
-      if (body.store && typeof body.store.dbFileBytes === 'number') this._data.dbFileBytes = body.store.dbFileBytes;
+      if (body.store && typeof body.store === 'object') {
+        this._data = body.store;
+      }
+      this._replaceAudit = false;
       document.dispatchEvent(new CustomEvent('db:change'));
       return true;
     },
@@ -576,31 +597,43 @@
     all(col) { return this.load()[col] || []; },
     find(col, id) { return this.all(col).find((x) => x.id === id); },
 
-    add(col, item, opts = {}) {
+    async add(col, item, opts = {}) {
+      const snap = this._snapshot();
       const record = { ...item, id: item.id || uid(col.slice(0, 2)) };
       this.load()[col].unshift(record);
       this.log(opts.action || 'Create', opts.module || MODULE_OF[col], opts.details || `Created record ${record.id}`, opts.severity || 'Info', { persist: false });
-      this.save();
-      return record;
+      if (opts.persist === false) return record;
+      if (!await this.save()) { this._restore(snap); return null; }
+      return this.find(col, record.id) || record;
     },
 
-    update(col, id, patch, opts = {}) {
+    async update(col, id, patch, opts = {}) {
+      const snap = this._snapshot();
       const list = this.all(col);
       const idx = list.findIndex((x) => x.id === id);
       if (idx === -1) return null;
       list[idx] = { ...list[idx], ...patch, updatedAt: new Date().toISOString() };
       this.log(opts.action || 'Update', opts.module || MODULE_OF[col], opts.details || `Updated record ${id}`, opts.severity || 'Info', { persist: false });
-      this.save();
-      return list[idx];
+      if (opts.persist === false) return list[idx];
+      if (!await this.save()) { this._restore(snap); return null; }
+      return this.find(col, id);
     },
 
-    remove(col, id, opts = {}) {
+    async remove(col, id, opts = {}) {
+      const snap = this._snapshot();
       const data = this.load();
       const before = data[col].length;
       data[col] = data[col].filter((x) => x.id !== id);
       if (data[col].length === before) return false;
+      if (col === 'seniors') {
+        data.assistance = (data.assistance || []).filter((row) => row.seniorId !== id);
+        (data.programs || []).forEach((program) => {
+          program.beneficiaries = (program.beneficiaries || []).filter((sid) => sid !== id);
+        });
+      }
       this.log('Delete', opts.module || MODULE_OF[col], opts.details || `Deleted record ${id}`, opts.severity || 'Warning', { persist: false });
-      this.save();
+      if (opts.persist === false) return true;
+      if (!await this.save()) { this._restore(snap); return false; }
       return true;
     },
 
@@ -612,23 +645,28 @@
         user: opts.user || (session ? session.name : 'System'),
         role: opts.role || (session ? session.role : '—'),
         action, module, details, severity,
-        ip: opts.ip || (session ? session.ip : '127.0.0.1')
+        ip: opts.ip || (session ? session.ip : '')
       };
       const data = this.load();
       data.logs.unshift(entry);
       if (data.logs.length > MAX_LOGS) data.logs.length = MAX_LOGS;
+      let pending = Promise.resolve(true);
       if (IS_LOGIN || action === 'Failed Login') {
-        this._request('/api/activity', { method: 'POST', body: JSON.stringify(entry) }).catch(() => {});
+        pending = this._request('/api/activity', { method: 'POST', body: JSON.stringify(entry) })
+          .then(({ res }) => res.ok)
+          .catch(() => false);
       }
-      if (opts.persist !== false) this.save();
-      return entry;
+      if (opts.persist !== false) pending = this.save();
+      return pending.then(() => entry);
     },
 
     get settings() { return this.load().settings; },
-    setSettings(patch, details) {
+    async setSettings(patch, details) {
+      const snap = this._snapshot();
       this.load().settings = { ...this.load().settings, ...patch };
       this.log('Update', 'Settings', details || 'System settings updated', 'Warning', { persist: false });
-      this.save();
+      if (!await this.save()) { this._restore(snap); return false; }
+      return true;
     },
 
     sizeBytes() { return this.load().dbFileBytes || new Blob([JSON.stringify(this.load())]).size; },
@@ -641,18 +679,33 @@
       for (const key of ['seniors', 'programs', 'assistance', 'logs']) {
         if (!Array.isArray(obj[key])) return `Backup is missing the "${key}" collection.`;
       }
-      const badSenior = obj.seniors.find((s) => !s || !s.id || !s.firstName || !s.lastName || !s.birthdate);
-      if (badSenior) return 'One or more senior records are incomplete.';
+      const seniorIds = new Set();
+      for (const s of obj.seniors) {
+        if (!s || !s.id || !s.firstName || !s.lastName || !s.birthdate) return 'One or more senior records are incomplete.';
+        if (s.photo && !safeImageSrc(s.photo)) return 'A senior photo in this backup is not a valid image.';
+        if (s.idCardImage && !safeImageSrc(s.idCardImage)) return 'An ID card image in this backup is not a valid image.';
+        seniorIds.add(s.id);
+      }
+      for (const p of obj.programs) {
+        if (!p || !p.id || !p.title || !p.date) return 'One or more program records are incomplete.';
+        if (!Array.isArray(p.beneficiaries)) return 'A program is missing its beneficiary list.';
+        if (p.capacity != null && p.capacity !== '' && Number.isNaN(Number(p.capacity))) return 'A program has an invalid capacity.';
+      }
+      for (const a of obj.assistance) {
+        if (!a || !a.id || !a.seniorId || !a.type || !a.status) return 'One or more assistance records are incomplete.';
+        if (!seniorIds.has(a.seniorId)) return `Assistance ${a.id} points to a senior who is not in this backup.`;
+      }
       return '';
     },
 
     importData(obj) {
+      this._replaceAudit = true;
       this._data = {
         version: DB_VERSION,
         seededAt: obj.seededAt || new Date().toISOString(),
-        seniors: obj.seniors,
-        programs: obj.programs,
-        assistance: obj.assistance,
+        seniors: obj.seniors.map((s) => ({ ...s, photo: safeImageSrc(s.photo), idCardImage: safeImageSrc(s.idCardImage) })),
+        programs: obj.programs.map((p) => ({ ...p, beneficiaries: Array.isArray(p.beneficiaries) ? p.beneficiaries : [], capacity: Number(p.capacity) || 0 })),
+        assistance: obj.assistance.map((a) => ({ ...a, history: Array.isArray(a.history) ? a.history : [] })),
         logs: obj.logs,
         backups: Array.isArray(obj.backups) ? obj.backups : [],
         settings: { ...EMPTY_SETTINGS, ...(obj.settings || {}) }
@@ -660,7 +713,11 @@
       return true;
     },
 
-    reset() { this._data = buildSeed(); return true; }
+    reset() {
+      this._replaceAudit = true;
+      this._data = buildSeed();
+      return true;
+    }
   };
 
   /* ------------------------------------------------------------------------
@@ -776,9 +833,13 @@
         username: user.username || '',
         loginAt: new Date().toISOString(),
         lastActive: Date.now(),
-        ip: `192.168.1.${10 + Math.floor(Math.random() * 40)}`,
+        ip: '',
         remember: !!remember
       };
+      try {
+        localStorage.removeItem(SESSION_KEY);
+        sessionStorage.removeItem(SESSION_KEY);
+      } catch (_) {}
       (remember ? localStorage : sessionStorage).setItem(SESSION_KEY, JSON.stringify(session));
       this._cache = session;
       return session;
@@ -798,16 +859,17 @@
       return Date.now() - (s.lastActive || 0) > minutes * 60000;
     },
 
-    end(reason = 'signedout') {
+    async end(reason = 'signedout') {
       if (this._ending) return;
       this._ending = true;
       const s = this.get();
-      if (s) DB.log('Logout', 'Authentication', reason === 'expired' ? `${s.name}'s session expired` : `${s.name} signed out`);
+      if (s) await DB.log('Logout', 'Authentication', reason === 'expired' ? `${s.name}'s session expired` : `${s.name} signed out`);
       localStorage.removeItem(SESSION_KEY);
       sessionStorage.removeItem(SESSION_KEY);
       this._cache = null;
       const next = `${LOGIN_URL}?${reason}=1`;
-      Auth.logout().finally(() => { location.replace(next); });
+      await Auth.logout().catch(() => {});
+      location.replace(next);
     }
   };
 
@@ -1121,9 +1183,12 @@
      9. Render helpers
      ------------------------------------------------------------------------ */
   const badge = (text, tone, attrs = '') => `<span class="badge badge--${tone || STATUS_TONE[text] || 'neutral'}" ${attrs}>${esc(text)}</span>`;
-  const avatar = (name, cls = '', photo) => photo
-    ? `<span class="avatar ${cls} avatar--photo" aria-hidden="true"><img src="${photo}" alt=""></span>`
-    : `<span class="avatar ${cls}" aria-hidden="true">${esc(initials(name))}</span>`;
+  const avatar = (name, cls = '', photo) => {
+    const src = safeImageSrc(photo);
+    return src
+      ? `<span class="avatar ${cls} avatar--photo" aria-hidden="true"><img src="${esc(src)}" alt=""></span>`
+      : `<span class="avatar ${cls}" aria-hidden="true">${esc(initials(name))}</span>`;
+  };
   const emptyState = (title, text, icon = 'fa-inbox') => `
     <div class="empty-state">
       <span class="empty-state__icon"><i class="fa-solid ${icon}" aria-hidden="true"></i></span>
@@ -1140,13 +1205,15 @@
     </tr>`).join('');
 
   function renderIdCard(s) {
-    if (s.idCardImage) {
-      return `<article class="id-card id-card--scan"><img class="id-card__scan" src="${s.idCardImage}" alt="Senior Citizen ID for ${esc(displayName(s))}"></article>`;
+    const scan = safeImageSrc(s.idCardImage);
+    if (scan) {
+      return `<article class="id-card id-card--scan"><img class="id-card__scan" src="${esc(scan)}" alt="Senior Citizen ID for ${esc(displayName(s))}"></article>`;
     }
     const issued = parseDate(s.registeredAt);
     const expiry = issued ? issued.getFullYear() + 3 : new Date().getFullYear() + 3;
-    const photo = s.photo
-      ? `<img src="${s.photo}" alt="">`
+    const portrait = safeImageSrc(s.photo);
+    const photo = portrait
+      ? `<img src="${esc(portrait)}" alt="">`
       : esc(initials(`${s.firstName} ${s.lastName}`));
     return `
       <article class="id-card">
@@ -1193,6 +1260,7 @@
       toast('The ID image is too large to prepare for print. Try a smaller photo.', 'error');
       return;
     }
+    DB.log('Export', 'Senior Registry', `Printed ${seniors.length} Senior Citizen ID${seniors.length === 1 ? '' : 's'}`);
     location.assign('/PrintSeniorId');
   }
 
@@ -1276,12 +1344,35 @@
   /* ------------------------------------------------------------------------
      10. Domain helpers
      ------------------------------------------------------------------------ */
-  const programStatus = (p) => (p.cancelled ? 'Cancelled' : parseDate(p.date) >= startOfDay() ? 'Upcoming' : 'Completed');
+  const programBeneficiaries = (p) => (Array.isArray(p?.beneficiaries) ? p.beneficiaries : []);
+
+  const programStatus = (p) => {
+    if (p.cancelled) return 'Cancelled';
+    const day = parseDate(p.date);
+    if (!day || isNaN(day)) return 'Upcoming';
+    const today = startOfDay();
+    if (day > today) return 'Upcoming';
+    if (day < today) return 'Completed';
+    if (p.time) {
+      const [hours, minutes] = String(p.time).split(':').map(Number);
+      if (Number.isFinite(hours)) {
+        const eventAt = new Date();
+        eventAt.setHours(hours, Number.isFinite(minutes) ? minutes : 0, 0, 0);
+        if (eventAt <= new Date()) return 'Completed';
+      }
+    }
+    return 'Upcoming';
+  };
 
   const nextOscaId = () => {
     const year = new Date().getFullYear();
-    const max = DB.all('seniors').reduce((m, s) => Math.max(m, Number(String(s.oscaId).split('-').pop()) || 0), 0);
-    return `OSCA-${year}-${pad(max + 1, 4)}`;
+    const prefix = `OSCA-${year}-`;
+    const max = DB.all('seniors').reduce((m, s) => {
+      const id = String(s.oscaId || '');
+      if (!id.startsWith(prefix)) return m;
+      return Math.max(m, Number(id.slice(prefix.length)) || 0);
+    }, 0);
+    return `${prefix}${pad(max + 1, 4)}`;
   };
   const nextRequestId = () => {
     const max = DB.all('assistance').reduce((m, a) => Math.max(m, Number(String(a.id).replace(/\D/g, '')) || 0), 1000);
@@ -1316,6 +1407,7 @@
     const groups = navGroupState();
     const pending = DB.all('assistance').filter((a) => a.status === 'Pending').length;
 
+    const visible = (item) => !item.perm || can(item.perm);
     const link = (item) => `
       <a class="nav-link ${item.page === PAGE ? 'is-active' : ''}" href="${item.href}" ${item.page === PAGE ? 'aria-current="page"' : ''}>
         <i class="fa-solid ${item.icon}" aria-hidden="true"></i>
@@ -1324,8 +1416,10 @@
       </a>`;
 
     const sections = NAV.map((section) => {
-      if (!section.group) return `<p class="nav-label">${esc(section.label)}</p>${section.items.map(link).join('')}`;
-      const containsActive = section.items.some((i) => i.page === PAGE);
+      const items = section.items.filter(visible);
+      if (!items.length) return '';
+      if (!section.group) return `<p class="nav-label">${esc(section.label)}</p>${items.map(link).join('')}`;
+      const containsActive = items.some((i) => i.page === PAGE);
       const open = containsActive || groups[section.group] !== false;
       return `
         <p class="nav-label">${esc(section.label)}</p>
@@ -1336,7 +1430,7 @@
             <i class="fa-solid fa-chevron-down nav-group__chev" aria-hidden="true"></i>
           </button>
           <div class="nav-group__panel" id="nav-${section.group}">
-            <div class="nav-group__inner">${section.items.map(link).join('')}</div>
+            <div class="nav-group__inner">${items.map(link).join('')}</div>
           </div>
         </div>`;
     }).join('');
@@ -1570,6 +1664,7 @@
 
     seniors.filter((s) => s.status === 'Active').forEach((s) => {
       const b = parseDate(s.birthdate);
+      if (!b || isNaN(b)) return;
       let next = new Date(today.getFullYear(), b.getMonth(), b.getDate());
       if (next < today) next = new Date(today.getFullYear() + 1, b.getMonth(), b.getDate());
       const days = daysBetween(today, next);
@@ -1681,14 +1776,25 @@
     });
 
     const touch = debounce(() => Session.touch(), 1000);
-    ['click', 'keydown'].forEach((evt) => document.addEventListener(evt, touch, { passive: true }));
+    ['click', 'keydown', 'mousemove', 'scroll', 'touchstart'].forEach((evt) => document.addEventListener(evt, touch, { passive: true }));
     setInterval(() => { if (Session.isExpired()) { flash('Your session expired due to inactivity.', 'warning', 'Signed out'); Session.end('expired'); } }, 60000);
 
     document.addEventListener('db:change', debounce(() => {
       renderNotifications();
-      const badgeEl = $('.nav-link__badge');
       const pending = DB.all('assistance').filter((a) => a.status === 'Pending').length;
-      if (badgeEl) { badgeEl.textContent = pending; badgeEl.hidden = pending === 0; }
+      const assistLink = $('.nav-link[href="/AssistanceManagement"]');
+      if (!assistLink) return;
+      let badgeEl = assistLink.querySelector('.nav-link__badge');
+      if (!badgeEl && pending) {
+        badgeEl = document.createElement('span');
+        badgeEl.className = 'nav-link__badge';
+        assistLink.appendChild(badgeEl);
+      }
+      if (badgeEl) {
+        badgeEl.textContent = pending;
+        badgeEl.hidden = pending === 0;
+        badgeEl.setAttribute('aria-label', `${pending} pending`);
+      }
     }, 100));
 
     window.matchMedia('(min-width: 1024px)').addEventListener('change', (mq) => { if (mq.matches) toggleSidebar(false); });
@@ -1832,7 +1938,7 @@
           if (el) Form.setError(el, msg);
         });
         if (result.errors?.form) {
-          DB.log('Failed Login', 'Authentication', `Failed sign-in attempt for "${data.username || 'unknown'}"`, 'Warning', { user: data.username || 'unknown', role: '—', ip: '192.168.1.5' });
+          await DB.log('Failed Login', 'Authentication', `Failed sign-in attempt for "${data.username || 'unknown'}"`, 'Warning', { user: data.username || 'unknown', role: '—' });
         }
         const first = form.querySelector('.is-invalid, [aria-invalid="true"]');
         if (first) first.focus();
@@ -1841,7 +1947,7 @@
 
       Session.start(result.user, data.remember);
       localStorage.setItem(LAST_USER_KEY, result.user.username);
-      DB.log('Login', 'Authentication', `${result.user.name} signed in as ${result.user.role}`);
+      await DB.log('Login', 'Authentication', `${result.user.name} signed in as ${result.user.role}`);
       flash(`Signed in as ${result.user.role}.`, 'success', `Welcome, ${result.user.name.split(' ')[0]}!`);
       location.href = '/Dashboard';
     });
@@ -2199,7 +2305,8 @@
           confirmText: 'Delete record', icon: 'fa-trash-can'
         });
         if (!ok) return;
-        DB.remove('seniors', s.id, { details: `Deleted senior record ${displayName(s)} (${s.oscaId})` });
+        const removed = await DB.remove('seniors', s.id, { details: `Deleted senior record ${displayName(s)} (${s.oscaId})` });
+        if (!removed) { toast('The record could not be deleted.', 'error'); return; }
         selected.delete(s.id);
         toast(`${displayName(s)} was removed from the registry.`, 'success', 'Record deleted');
         render();
@@ -2210,10 +2317,11 @@
     const norm = (v) => String(v || '').trim().toLowerCase().replace(/\s+/g, ' ');
     function findDuplicates() {
       const fn = norm(form.elements.firstName.value);
+      const mn = norm(form.elements.middleName.value);
       const ln = norm(form.elements.lastName.value);
       const bd = form.elements.birthdate.value;
       if (!fn || !ln) return { exact: [], similar: [] };
-      const matches = DB.all('seniors').filter((s) => s.id !== editingId && norm(s.firstName) === fn && norm(s.lastName) === ln);
+      const matches = DB.all('seniors').filter((s) => s.id !== editingId && norm(s.firstName) === fn && norm(s.lastName) === ln && (!mn || !norm(s.middleName) || norm(s.middleName) === mn));
       return { exact: matches.filter((s) => bd && s.birthdate === bd), similar: matches.filter((s) => !bd || s.birthdate !== bd) };
     }
 
@@ -2260,7 +2368,7 @@
       Modal.open(modal);
     }
 
-    form.addEventListener('submit', (e) => {
+    form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const valid = Form.validate(form, (d) => {
         const errors = {};
@@ -2283,11 +2391,13 @@
       delete data.ageDisplay;
       delete data.duplicateAck;
       if (editingId) {
-        const updated = DB.update('seniors', editingId, data, { details: `Updated profile of ${data.firstName} ${data.lastName} (${data.oscaId})` });
+        const updated = await DB.update('seniors', editingId, data, { details: `Updated profile of ${data.firstName} ${data.lastName} (${data.oscaId})` });
+        if (!updated) { toast('The profile could not be saved.', 'error'); return; }
         toast(`${displayName(updated)}'s profile was updated.`, 'success', 'Changes saved');
       } else {
-        const created = DB.add('seniors', { ...data, id: uid('SC'), status: 'Active', registeredAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+        const created = await DB.add('seniors', { ...data, id: uid('SC'), status: 'Active', registeredAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
           { details: `Registered ${data.firstName} ${data.lastName} (${data.oscaId})${!dupAlert.hidden ? ' after duplicate review' : ''}` });
+        if (!created) { toast('The senior could not be registered.', 'error'); return; }
         toast(`${displayName(created)} is now in the registry.`, 'success', 'Senior registered');
         state.sort = 'registeredAt'; state.dir = 'desc'; state.page = 1;
       }
@@ -2304,7 +2414,7 @@
       if (!s) { toast('That senior record could not be found.', 'error'); return; }
       const requests = sortBy(DB.all('assistance').filter((a) => a.seniorId === id), 'requestedAt', 'desc');
       const released = requests.filter((a) => a.status === 'Released').reduce((sum, a) => sum + a.amount, 0);
-      const programs = sortBy(DB.all('programs').filter((p) => p.beneficiaries.includes(id)), 'date', 'desc');
+      const programs = sortBy(DB.all('programs').filter((p) => programBeneficiaries(p).includes(id)), 'date', 'desc');
 
       $('#profileBody').innerHTML = `
         <div class="profile-head">
@@ -2394,7 +2504,6 @@
       if (!rows.length) { toast('Select at least one record first.', 'warning'); return; }
       if (action === 'print') {
         printIdCards(rows);
-        DB.log('Export', 'Senior Registry', `Printed ${rows.length} Senior Citizen ID${rows.length === 1 ? '' : 's'}`);
         return;
       }
       if (action === 'export') {
@@ -2419,7 +2528,17 @@
         });
         if (!ok) return;
         const at = new Date().toISOString();
-        eligible.forEach((s) => DB.update('seniors', s.id, { pensionDistributedAt: at }, { details: `Marked pension distributed for ${displayName(s)} (${s.oscaId})` }));
+        const snap = DB._snapshot();
+        eligible.forEach((s) => {
+          const row = DB.find('seniors', s.id);
+          if (row) Object.assign(row, { pensionDistributedAt: at, updatedAt: at });
+        });
+        await DB.log('Update', 'Senior Registry', `Marked pension distributed for ${eligible.length} senior${eligible.length === 1 ? '' : 's'}`, 'Info', { persist: false });
+        if (!await DB.save()) {
+          DB._restore(snap);
+          toast('The pension tags could not be saved.', 'error');
+          return;
+        }
         toast(`Pension marked distributed for ${eligible.length} senior${eligible.length === 1 ? '' : 's'}.`, 'success', 'Pension payout');
         render();
       }
@@ -2459,7 +2578,7 @@
 
     function renderStats() {
       const all = DB.all('programs');
-      const reached = new Set(all.filter((p) => !p.cancelled).flatMap((p) => p.beneficiaries));
+      const reached = new Set(all.filter((p) => !p.cancelled).flatMap((p) => programBeneficiaries(p)));
       const year = new Date().getFullYear();
       $('#pgTotal').textContent = all.length;
       $('#pgUpcoming').textContent = all.filter((p) => programStatus(p) === 'Upcoming').length;
@@ -2481,9 +2600,10 @@
       const list = filtered();
       grid.innerHTML = list.map((p) => {
         const status = programStatus(p);
-        const count = p.beneficiaries.length;
+        const enrolled = programBeneficiaries(p);
+        const count = enrolled.length;
         const pct = p.capacity ? Math.min(100, Math.round((count / p.capacity) * 100)) : 0;
-        const names = p.beneficiaries.slice(0, 3).map((id) => map.get(id)).filter(Boolean);
+        const names = enrolled.slice(0, 3).map((id) => map.get(id)).filter(Boolean);
         return `
           <article class="card card--hover program-card program-card--${p.type.toLowerCase()} ${status === 'Cancelled' ? 'is-cancelled' : ''}" id="program-${esc(p.id)}">
             <div class="program-card__top">
@@ -2506,7 +2626,7 @@
               ${!count ? '<span class="muted small">No beneficiaries yet</span>' : ''}
             </div>
             <footer class="program-card__footer">
-              <button type="button" class="btn btn--soft btn--sm" data-action="beneficiaries" data-id="${esc(p.id)}" ${canWrite && status !== 'Cancelled' ? '' : 'disabled'}><i class="fa-solid fa-user-group" aria-hidden="true"></i>Beneficiaries</button>
+              <button type="button" class="btn btn--soft btn--sm" data-action="beneficiaries" data-id="${esc(p.id)}" ${canWrite && status === 'Upcoming' ? '' : 'disabled'}><i class="fa-solid fa-user-group" aria-hidden="true"></i>Beneficiaries</button>
               <div class="btn-group">
                 <button type="button" class="icon-btn icon-btn--sm" data-action="edit" data-id="${esc(p.id)}" aria-label="Edit ${esc(p.title)}" title="Edit" ${canWrite ? '' : 'disabled'}><i class="fa-regular fa-pen-to-square" aria-hidden="true"></i></button>
                 <button type="button" class="icon-btn icon-btn--sm" data-action="toggle-cancel" data-id="${esc(p.id)}" aria-label="${p.cancelled ? 'Reinstate' : 'Cancel'} ${esc(p.title)}" title="${p.cancelled ? 'Reinstate' : 'Cancel event'}" ${canWrite ? '' : 'disabled'}><i class="fa-solid ${p.cancelled ? 'fa-rotate-left' : 'fa-ban'}" aria-hidden="true"></i></button>
@@ -2533,7 +2653,7 @@
             <span class="timeline__dot" aria-hidden="true"></span>
             <div class="timeline__date">${fmtDate(p.date, { month: 'short', day: 'numeric' })} · ${esc(fmtTime(p.time))} <span class="timeline__when">${esc(when)}</span></div>
             <a class="timeline__title" href="#program-${esc(p.id)}" data-focus="${esc(p.id)}">${esc(p.title)}</a>
-            <div class="timeline__meta"><i class="fa-solid fa-location-dot" aria-hidden="true"></i> ${esc(p.venue)} · ${p.beneficiaries.length} enrolled</div>
+            <div class="timeline__meta"><i class="fa-solid fa-location-dot" aria-hidden="true"></i> ${esc(p.venue)} · ${programBeneficiaries(p).length} enrolled</div>
           </li>`;
       };
       $('#programTimeline').innerHTML = `
@@ -2577,21 +2697,25 @@
       $('#programSubmit').innerHTML = p ? '<i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Save changes' : '<i class="fa-solid fa-calendar-plus" aria-hidden="true"></i> Create program';
       if (p) Form.fill(form, p);
       else Form.fill(form, { type: 'Health', time: '08:00', capacity: 50, date: toISODate(new Date(Date.now() + 7 * 86400000)) });
+      if (form.elements.date) form.elements.date.min = p ? '' : toISODate(new Date());
       Modal.open(modal);
     }
 
-    form.addEventListener('submit', (e) => {
+    form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const existing = editingId ? DB.find('programs', editingId) : null;
-      const valid = Form.validate(form, (d) => (existing && d.capacity < existing.beneficiaries.length
-        ? { capacity: `Capacity cannot be lower than the ${existing.beneficiaries.length} enrolled beneficiaries.` } : {}));
+      const enrolledCount = programBeneficiaries(existing).length;
+      const valid = Form.validate(form, (d) => (existing && d.capacity < enrolledCount
+        ? { capacity: `Capacity cannot be lower than the ${enrolledCount} enrolled beneficiaries.` } : {}));
       if (!valid) return;
       const data = Form.data(form);
       if (existing) {
-        DB.update('programs', editingId, data, { details: `Updated program “${data.title}”` });
+        const updated = await DB.update('programs', editingId, data, { details: `Updated program “${data.title}”` });
+        if (!updated) { toast('The program could not be saved.', 'error'); return; }
         toast(`“${data.title}” was updated.`, 'success', 'Program saved');
       } else {
-        DB.add('programs', { ...data, id: nextProgramId(), beneficiaries: [], cancelled: false, createdAt: new Date().toISOString() }, { details: `Scheduled program “${data.title}” on ${fmtDate(data.date)}` });
+        const created = await DB.add('programs', { ...data, id: nextProgramId(), beneficiaries: [], cancelled: false, createdAt: new Date().toISOString() }, { details: `Scheduled program “${data.title}” on ${fmtDate(data.date)}` });
+        if (!created) { toast('The program could not be created.', 'error'); return; }
         toast(`“${data.title}” has been scheduled.`, 'success', 'Program created');
       }
       Modal.close(modal);
@@ -2612,17 +2736,19 @@
       if (action === 'toggle-cancel') {
         const cancelling = !p.cancelled;
         const ok = await confirmDialog(cancelling
-          ? { title: 'Cancel this program?', message: `“${p.title}” will be marked as cancelled. ${p.beneficiaries.length} enrolled seniors should be informed.`, confirmText: 'Cancel program', icon: 'fa-ban', cancelText: 'Keep program' }
+          ? { title: 'Cancel this program?', message: `“${p.title}” will be marked as cancelled. ${programBeneficiaries(p).length} enrolled seniors should be informed.`, confirmText: 'Cancel program', icon: 'fa-ban', cancelText: 'Keep program' }
           : { title: 'Reinstate this program?', message: `“${p.title}” will be restored to the schedule.`, confirmText: 'Reinstate', tone: 'primary', icon: 'fa-rotate-left' });
         if (!ok) return;
-        DB.update('programs', p.id, { cancelled: cancelling }, { details: `${cancelling ? 'Cancelled' : 'Reinstated'} program “${p.title}”`, severity: cancelling ? 'Warning' : 'Info' });
+        const updated = await DB.update('programs', p.id, { cancelled: cancelling }, { details: `${cancelling ? 'Cancelled' : 'Reinstated'} program “${p.title}”`, severity: cancelling ? 'Warning' : 'Info' });
+        if (!updated) { toast('The program could not be updated.', 'error'); return; }
         toast(`“${p.title}” was ${cancelling ? 'cancelled' : 'reinstated'}.`, cancelling ? 'warning' : 'success');
         renderAll();
       }
       if (action === 'delete') {
         const ok = await confirmDialog({ title: 'Delete program?', message: `“${p.title}” and its beneficiary list will be permanently deleted.`, confirmText: 'Delete program', icon: 'fa-trash-can' });
         if (!ok) return;
-        DB.remove('programs', p.id, { details: `Deleted program “${p.title}”` });
+        const removed = await DB.remove('programs', p.id, { details: `Deleted program “${p.title}”` });
+        if (!removed) { toast('The program could not be deleted.', 'error'); return; }
         toast(`“${p.title}” was deleted.`, 'success', 'Program deleted');
         renderAll();
       }
@@ -2637,7 +2763,7 @@
 
     function openBeneficiaries(p) {
       benProgramId = p.id;
-      benSet = new Set(p.beneficiaries);
+      benSet = new Set(programBeneficiaries(p));
       $('#benTitle').textContent = p.title;
       $('#benSubtitle').textContent = `${p.type} · ${fmtDate(p.date)} · ${p.venue}`;
       $('#benEligible').innerHTML = `<i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> ${ELIGIBLE[p.type].label}`;
@@ -2694,13 +2820,14 @@
       renderBeneficiaries();
       toast(added ? `${added} eligible senior${added > 1 ? 's' : ''} added.` : 'No additional eligible seniors (or capacity reached).', added ? 'success' : 'info');
     });
-    $('#benSave').addEventListener('click', () => {
+    $('#benSave').addEventListener('click', async () => {
       const p = DB.find('programs', benProgramId);
-      const before = new Set(p.beneficiaries);
+      const before = new Set(programBeneficiaries(p));
       const added = [...benSet].filter((id) => !before.has(id)).length;
       const removed = [...before].filter((id) => !benSet.has(id)).length;
       if (added || removed) {
-        DB.update('programs', p.id, { beneficiaries: [...benSet] }, { details: `Updated beneficiaries of “${p.title}” (+${added} / −${removed}, ${benSet.size} total)` });
+        const updated = await DB.update('programs', p.id, { beneficiaries: [...benSet] }, { details: `Updated beneficiaries of “${p.title}” (+${added} / −${removed}, ${benSet.size} total)` });
+        if (!updated) { toast('The beneficiary list could not be saved.', 'error'); return; }
         toast(`${benSet.size} beneficiaries enrolled in “${p.title}”.`, 'success', 'Beneficiaries saved');
       }
       Modal.close('beneficiaryModal');
@@ -2777,7 +2904,7 @@
             <td class="nowrap"><strong class="mono">${esc(a.id)}</strong></td>
             <td>
               <div class="cell-person">
-                ${avatar(displayName(s), 'avatar--sm', s.photo)}
+                ${avatar(displayName(s), 'avatar--sm', s?.photo)}
                 <div class="cell-person__text"><strong>${esc(fullName(s))}</strong><small>${s ? `${esc(s.oscaId)} · ${esc(s.purok)}` : 'Record removed'}</small></div>
               </div>
             </td>
@@ -2826,11 +2953,12 @@
       const verbs = { Approved: ['Approve', 'Approved'], Denied: ['Deny', 'Denied'], Released: ['Release', 'Released'] };
       const badgeEl = document.querySelector(`[data-badge-for="${CSS.escape(id)}"]`);
       if (badgeEl) { badgeEl.className = `badge badge--${STATUS_TONE[next]}`; badgeEl.textContent = next; }
-      DB.update('assistance', id, {
+      const updated = await DB.update('assistance', id, {
         status: next, handledBy: session.name,
         remarks: next === 'Denied' ? note : a.remarks,
         history: [...(a.history || []), { status: next, at, by: session.name, note }]
       }, { action: verbs[next][0], details: `${verbs[next][1]} ${a.type} request ${a.id} for ${who} (${fmtMoney(a.amount)})`, severity: next === 'Denied' ? 'Warning' : 'Info' });
+      if (!updated) { toast('The request could not be updated.', 'error'); return; }
       toast(`Request ${a.id} is now ${next.toLowerCase()}.`, next === 'Denied' ? 'warning' : 'success', `Request ${next.toLowerCase()}`);
       setTimeout(() => { render(); renderHistory(); if ($('#requestDetailModal').classList.contains('is-open')) openDetail(id); }, 300);
     }
@@ -2919,6 +3047,8 @@
       const recent = history.find((a) => a.type === type && a.status !== 'Denied' && Date.now() - new Date(a.requestedAt).getTime() < 30 * 86400000);
       warn.hidden = !recent;
       if (recent) $('#reqRecentText').textContent = `${displayName(s)} already has a ${type.toLowerCase()} request (${recent.id}, ${recent.status.toLowerCase()}) filed on ${fmtDate(recent.requestedAt)}.`;
+      const ack = $('#reqRecentAck');
+      if (ack) ack.checked = false;
     }
     reqSenior.addEventListener('change', renderSeniorInfo);
     form.elements.type.addEventListener('change', renderSeniorInfo);
@@ -2931,22 +3061,31 @@
     }
     $('#newRequestBtn').addEventListener('click', () => openRequestForm());
 
-    form.addEventListener('submit', (e) => {
+    form.addEventListener('submit', async (e) => {
       e.preventDefault();
       if (!Form.validate(form, (d) => {
         const s = DB.find('seniors', d.seniorId);
         if (s && s.status === 'Deceased' && d.type !== 'Burial') return { type: 'Only burial assistance can be filed for a deceased senior.' };
         return {};
       })) return;
+      const warn = $('#reqRecentAlert');
+      if (warn && !warn.hidden && !$('#reqRecentAck')?.checked) {
+        warn.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        $('#reqRecentAck')?.focus();
+        toast('Please confirm this duplicate request before filing.', 'warning', 'Recent request');
+        return;
+      }
       const d = Form.data(form);
+      delete d.recentAck;
       const s = DB.find('seniors', d.seniorId);
       const at = new Date().toISOString();
       const id = nextRequestId();
-      DB.add('assistance', {
+      const created = await DB.add('assistance', {
         id, seniorId: d.seniorId, type: d.type, amount: d.amount, purpose: d.purpose, remarks: d.remarks,
         status: 'Pending', requestedAt: at, updatedAt: at, handledBy: session.name,
         history: [{ status: 'Pending', at, by: session.name, note: 'Request filed' }]
       }, { details: `Filed ${d.type} request ${id} for ${displayName(s)} (${fmtMoney(d.amount)})` });
+      if (!created) { toast('The request could not be filed.', 'error'); return; }
       Modal.close(modal);
       toast(`Request ${id} for ${displayName(s)} was filed and is awaiting approval.`, 'success', 'Request submitted');
       state.status = ''; state.page = 1;
@@ -2962,7 +3101,7 @@
       const id = historySelect.value;
       const s = DB.find('seniors', id);
       const rows = sortBy(DB.all('assistance').filter((a) => a.seniorId === id), 'requestedAt', 'desc');
-      const released = rows.filter((a) => a.status === 'Released');
+      const released = sortBy(rows.filter((a) => a.status === 'Released'), 'updatedAt', 'desc');
       $('#historySummary').innerHTML = s ? `
         <div class="history-summary__item"><span>Total requests</span><strong>${rows.length}</strong></div>
         <div class="history-summary__item"><span>Released</span><strong>${released.length}</strong></div>
@@ -3153,12 +3292,13 @@
       $('#dbSize').textContent = fmtBytes(size);
       $('#recordCount').textContent = fmtNumber(recordCount());
       $('#recordBreakdown').textContent = `${DB.all('seniors').length} seniors · ${DB.all('assistance').length} requests · ${DB.all('programs').length} programs`;
-      const pct = Math.min(100, (size / STORAGE_QUOTA) * 100);
-      $('#storageFill').style.width = `${Math.max(pct, 1)}%`;
-      $('#storageFill').classList.toggle('is-warning', pct > 70);
       const postgres = DB.load().engine === 'postgres';
+      const cap = postgres ? 1024 * 1024 * 1024 : 50 * 1024 * 1024;
+      const pct = Math.min(100, (size / cap) * 100);
+      $('#storageFill').style.width = `${Math.max(pct, size ? 4 : 1)}%`;
+      $('#storageFill').classList.toggle('is-warning', pct > 70);
       $('#dbEngineMeta').textContent = postgres ? 'Stored in PostgreSQL (Render)' : 'Stored in SQLite (bscims.db)';
-      $('#storageKind').textContent = postgres ? 'Postgres database' : 'SQLite file';
+      $('#storageKind').textContent = postgres ? 'Postgres database size' : 'SQLite file size';
       $('#storageText').textContent = postgres ? `${fmtBytes(size)} stored in PostgreSQL` : `${fmtBytes(size)} stored in database/bscims.db`;
       $('#storageBar').setAttribute('aria-valuenow', pct.toFixed(1));
       $('#nextBackup').textContent = DB.settings.autoBackup ? `Next automatic backup: ${DB.settings.backupFrequency === 'Weekly' ? 'in 7 days' : 'tomorrow'} at 2:00 AM` : 'Automatic backups are turned off';
@@ -3249,6 +3389,7 @@
       if (!ok) return;
       $('#restoreBtn').disabled = true;
       await runProgress($('#restoreProgress'), ['Validating backup…', 'Replacing records…', 'Rebuilding indexes…', 'Finishing up…']);
+      const snap = DB._snapshot();
       const backups = DB.all('backups');
       if (!DB.importData(pendingRestore.obj)) {
         toast('The backup could not be imported.', 'error');
@@ -3256,9 +3397,10 @@
         return;
       }
       DB.load().backups = [{ id: uid('BK'), ts: new Date().toISOString(), type: 'Restore point', size: pendingRestore.size, by: session.name, records: recordCount() }, ...backups];
-      DB.log('Restore', 'Database Backup', `Database restored from ${pendingRestore.name}`, 'Critical', { persist: false });
+      await DB.log('Restore', 'Database Backup', `Database restored from ${pendingRestore.name}`, 'Critical', { persist: false });
       const saved = await DB.save();
       if (!saved) {
+        DB._restore(snap);
         toast('The restore could not be saved. Try again.', 'error');
         $('#restoreBtn').disabled = false;
         return;
@@ -3278,7 +3420,7 @@
     settingsForm.elements.autoBackup.addEventListener('change', syncFrequency);
     syncFrequency();
 
-    settingsForm.addEventListener('submit', (e) => {
+    settingsForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       if (!canEditSettings) return;
       const next = Form.data(settingsForm);
@@ -3289,7 +3431,8 @@
       const changes = Object.keys(LABELS).filter((k) => k in next && String(next[k]) !== String(current[k]));
       if (!changes.length) { toast('No changes to save.', 'info'); return; }
       const summary = changes.map((k) => `${LABELS[k]}: ${typeof next[k] === 'boolean' ? (next[k] ? 'On' : 'Off') : next[k]}`).join(', ');
-      DB.setSettings(next, `Settings changed. ${summary}`);
+      const saved = await DB.setSettings(next, `Settings changed. ${summary}`);
+      if (!saved) { toast('The settings could not be saved.', 'error'); return; }
       toast(`${changes.length} setting${changes.length > 1 ? 's' : ''} updated.`, 'success', 'Settings saved');
       renderOverview();
       renderNotifications();
@@ -3300,10 +3443,12 @@
       if (e.currentTarget.disabled) return;
       const ok = await confirmDialog({ title: 'Reset all data?', message: 'Every senior, program, request, and log will be replaced with the original demo data. Download a backup first if you need your current records.', confirmText: 'Reset to demo data', icon: 'fa-triangle-exclamation' });
       if (!ok) return;
+      const snap = DB._snapshot();
       DB.reset();
-      DB.log('Reset', 'Database Backup', 'All data reset to demo seed', 'Critical', { persist: false });
+      await DB.log('Reset', 'Database Backup', 'All data reset to demo seed', 'Critical', { persist: false });
       const saved = await DB.save();
       if (!saved) {
+        DB._restore(snap);
         toast('The reset could not be saved. Try again.', 'error');
         return;
       }
@@ -3324,7 +3469,7 @@
     DB, Session, Modal, Form,
     can, toast, flash, confirmDialog, downloadCSV, downloadBlob, fileStamp,
     chartTheme, chartFallback, monthKeys, cssVar, Theme,
-    utils: { $, $$, esc, fmtDate, fmtDateTime, fmtMoney, fmtNumber, ageOf, ageBracket, fullName, displayName, parseDate, toISODate, debounce, sortBy, programStatus, startOfDay },
+    utils: { $, $$, esc, fmtDate, fmtDateTime, fmtMoney, fmtNumber, ageOf, ageBracket, fullName, displayName, parseDate, toISODate, debounce, sortBy, programStatus, programBeneficiaries, startOfDay },
     constants: { PUROKS, AGE_BRACKETS, PENSION_TYPES, CONDITIONS, AID_TYPES, AID_STATUSES, PROGRAM_TYPES }
   };
   window.App = App;

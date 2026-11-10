@@ -187,7 +187,14 @@
           </div>
           <div class="alert alert--pending full" id="reqRecentAlert" hidden>
             <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
-            <div><strong>Recent request on file</strong><span id="reqRecentText"></span></div>
+            <div>
+              <strong>Recent request on file</strong>
+              <span id="reqRecentText"></span>
+              <label class="checkbox" style="margin-top:8px">
+                <input type="checkbox" id="reqRecentAck" name="recentAck">
+                <span>I reviewed this and still want to file this request</span>
+              </label>
+            </div>
           </div>
           <div class="field full">
             <label class="label" for="reqPurpose">Purpose <span class="req">*</span></label>

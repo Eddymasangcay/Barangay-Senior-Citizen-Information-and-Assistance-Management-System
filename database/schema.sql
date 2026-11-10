@@ -1,5 +1,5 @@
 -- BSCIMS office registry
--- SQLite 3. File: database/bscims.db
+-- SQLite 3 for local use. PostgreSQL uses schema.postgres.sql with the same PascalCase tables.
 
 PRAGMA foreign_keys = ON;
 

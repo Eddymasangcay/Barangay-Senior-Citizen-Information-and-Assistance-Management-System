@@ -1556,13 +1556,26 @@ legend.form-section__title { float: left; width: 100%; }
 }
 
 @media print {
-  body { background: #fff; font-size: 12px; }
+  html,
+  html[data-theme="dark"],
+  html[data-theme="high-contrast"] {
+    color-scheme: light;
+    --surface-white: #fff;
+    --text-dark: #1E1A24;
+    --text-muted: #6B6575;
+    --bg-soft-chrome: #fff;
+    --border-light: #DDD8E3;
+    --primary-toxic-violet: #3D007A;
+    --surface-muted: #F8F6FA;
+  }
+  body { background: #fff; color: #1E1A24; font-size: 12px; }
   .app { display: block; }
   .sidebar,
   .sidebar-overlay,
   .topbar,
   .toast-stack,
   .no-print,
+  .skip-link,
   .modal,
   .drawer { display: none !important; }
   .content { max-width: none; padding: 0; }

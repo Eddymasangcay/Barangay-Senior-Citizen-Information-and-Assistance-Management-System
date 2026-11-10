@@ -103,6 +103,7 @@ def guard_request():
 
 @app.get("/")
 @app.get("/OfficeLanding")
+@app.post("/OfficeLanding")
 def login_page():
     return _send_html(BASE_DIR, "OfficeLanding.html")
 
@@ -196,17 +197,23 @@ def put_records():
     payload = request.get_json(silent=True) or {}
     if not isinstance(payload, dict):
         return jsonify(ok=False, errors={"form": "Invalid record payload."}), 400
-    return jsonify(ok=True, store=database.load_store(payload, imported=False))
+    try:
+        store = database.load_store(payload, imported=False)
+    except database.StoreError as exc:
+        return jsonify(ok=False, errors={"form": str(exc)}), 400
+    return jsonify(ok=True, store=store)
 
 
 @app.post("/api/activity")
 def public_activity():
     entry = request.get_json(silent=True) or {}
+    if not isinstance(entry, dict):
+        return jsonify(ok=False, errors={"form": "Invalid activity payload."}), 400
     if entry.get("action") != "Failed Login":
         blocked = _require_login()
         if blocked:
             return blocked
-    database.append_activity(entry)
+    database.append_activity(entry, ip=request.remote_addr)
     return jsonify(ok=True)
 
 

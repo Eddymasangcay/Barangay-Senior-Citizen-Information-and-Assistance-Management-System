@@ -45,13 +45,13 @@
     </section>
 
     <section class="auth__panel">
-      <form class="auth__form" id="loginForm" novalidate aria-labelledby="loginTitle">
+      <form class="auth__form" id="loginForm" method="post" action="/OfficeLanding" novalidate aria-labelledby="loginTitle">
         <header class="auth__header">
           <h2 id="loginTitle">Sign in</h2>
           <p class="muted">Use your account credentials. Your role is assigned by the system, not chosen at login.</p>
         </header>
 
-        <div class="alert alert--alert auth__alert" id="loginAlert" hidden>
+        <div class="alert alert--alert auth__alert" id="loginAlert" hidden role="alert" aria-live="assertive">
           <i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i>
           <span></span>
         </div>

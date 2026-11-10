@@ -4,6 +4,7 @@ import os
 import re
 import sqlite3
 import threading
+import uuid
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
@@ -70,6 +71,10 @@ _IDENTIFIERS = tuple(sorted((
 _WRITE_LOCK = threading.Lock()
 
 
+class StoreError(ValueError):
+    """Raised when a backup or save payload cannot be stored."""
+
+
 def using_postgres():
     return bool(os.environ.get("DATABASE_URL", "").strip())
 
@@ -86,6 +91,8 @@ def _postgres_dsn():
     url = os.environ.get("DATABASE_URL", "").strip()
     if url.startswith("postgres://"):
         url = "postgresql://" + url[len("postgres://"):]
+    if url and "sslmode=" not in url.lower():
+        url += ("&" if "?" in url else "?") + "sslmode=require"
     return url
 
 
@@ -534,6 +541,66 @@ def _flag(value):
     return 1 if value else 0
 
 
+def _as_int(value, label):
+    try:
+        if value is None or value == "":
+            return 0
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise StoreError(f"A record has an invalid {label}.") from exc
+
+
+def _as_float(value, label):
+    try:
+        if value is None or value == "":
+            return 0.0
+        return float(value)
+    except (TypeError, ValueError) as exc:
+        raise StoreError(f"A record has an invalid {label}.") from exc
+
+
+def _clip(value, limit=400):
+    return str(value or "")[:limit]
+
+
+def _safe_image(value):
+    text = str(value or "").strip()
+    if text.startswith("data:image/") or text.startswith("https://") or text.startswith("http://"):
+        return text
+    return ""
+
+
+def _activity_row(entry, ip=None):
+    return (
+        _clip(entry.get("id") or f"LOG-{uuid.uuid4().hex[:12].upper()}", 80),
+        _clip(entry.get("ts") or _now(), 40),
+        _clip(entry.get("user"), 120),
+        _clip(entry.get("role") or "—", 40),
+        _clip(entry.get("action") or "Update", 80),
+        _clip(entry.get("module"), 80),
+        _clip(entry.get("details"), 500),
+        _clip(entry.get("severity") or "Info", 20),
+        _clip(ip if ip is not None else entry.get("ip"), 64),
+    )
+
+
+_LOG_UPSERT = """
+INSERT INTO ActivityLog (
+    LogId, LoggedAt, ActorName, ActorRole, ActionType,
+    ModuleName, Details, Severity, IpAddress
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(LogId) DO UPDATE SET
+    LoggedAt = excluded.LoggedAt,
+    ActorName = excluded.ActorName,
+    ActorRole = excluded.ActorRole,
+    ActionType = excluded.ActionType,
+    ModuleName = excluded.ModuleName,
+    Details = excluded.Details,
+    Severity = excluded.Severity,
+    IpAddress = excluded.IpAddress
+"""
+
+
 def load_store(payload, imported=False):
     seniors = payload.get("seniors") or []
     programs = payload.get("programs") or []
@@ -541,6 +608,7 @@ def load_store(payload, imported=False):
     logs = payload.get("logs") or []
     backups = payload.get("backups") or []
     settings = {**DEFAULT_SETTINGS, **(payload.get("settings") or {})}
+    replace_audit = bool(payload.get("replaceAudit") or imported)
     known = {row["id"] for row in seniors if row and row.get("id")}
 
     with _WRITE_LOCK, connect() as conn:
@@ -550,7 +618,8 @@ def load_store(payload, imported=False):
         conn.execute("DELETE FROM OutreachPrograms")
         conn.execute("DELETE FROM SeniorAilments")
         conn.execute("DELETE FROM SeniorCitizens")
-        conn.execute("DELETE FROM ActivityLog")
+        if replace_audit:
+            conn.execute("DELETE FROM ActivityLog")
         conn.execute("DELETE FROM BackupHistory")
 
         for senior in seniors:
@@ -581,8 +650,8 @@ def load_store(payload, imported=False):
                     _flag(senior.get("pwd")),
                     _flag(senior.get("indigent")),
                     senior.get("status") if senior.get("status") in ("Active", "Deceased", "Transferred") else "Active",
-                    senior.get("photo") or "",
-                    senior.get("idCardImage") or "",
+                    _safe_image(senior.get("photo")),
+                    _safe_image(senior.get("idCardImage")),
                     senior.get("pensionDistributedAt") or "",
                     senior.get("registeredAt") or _now(),
                     senior.get("updatedAt") or senior.get("registeredAt") or _now(),
@@ -615,7 +684,7 @@ def load_store(payload, imported=False):
                     program.get("time") or "",
                     program.get("venue") or "",
                     program.get("description") or "",
-                    int(program.get("capacity") or 0),
+                    _as_int(program.get("capacity"), "program capacity"),
                     _flag(program.get("cancelled")),
                     program.get("createdAt") or _now(),
                 ),
@@ -642,7 +711,7 @@ def load_store(payload, imported=False):
                     request.get("id"),
                     request.get("seniorId"),
                     request.get("type") or "Financial",
-                    float(request.get("amount") or 0),
+                    _as_float(request.get("amount"), "assistance amount"),
                     request.get("purpose") or "",
                     request.get("remarks") or "",
                     request.get("status") or "Pending",
@@ -667,28 +736,13 @@ def load_store(payload, imported=False):
                     ),
                 )
 
-        for entry in logs[:1500]:
-            if not entry or not entry.get("id"):
-                continue
-            conn.execute(
-                """
-                INSERT INTO ActivityLog (
-                    LogId, LoggedAt, ActorName, ActorRole, ActionType,
-                    ModuleName, Details, Severity, IpAddress
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    entry.get("id"),
-                    entry.get("ts") or _now(),
-                    entry.get("user") or "",
-                    entry.get("role") or "—",
-                    entry.get("action") or "Update",
-                    entry.get("module") or "",
-                    entry.get("details") or "",
-                    entry.get("severity") or "Info",
-                    entry.get("ip") or "",
-                ),
-            )
+        ordered_logs = sorted(
+            [entry for entry in logs if entry and entry.get("id")],
+            key=lambda item: str(item.get("ts") or ""),
+            reverse=True,
+        )
+        for entry in ordered_logs[:1500]:
+            conn.execute(_LOG_UPSERT, _activity_row(entry))
 
         for backup in backups:
             if not backup or not backup.get("id"):
@@ -703,9 +757,9 @@ def load_store(payload, imported=False):
                     backup.get("id"),
                     backup.get("ts") or _now(),
                     backup.get("type") or "Manual",
-                    int(backup.get("size") or 0),
+                    _as_int(backup.get("size"), "backup size"),
                     backup.get("by") or "",
-                    int(backup.get("records") or 0),
+                    _as_int(backup.get("records"), "backup record count"),
                 ),
             )
 
@@ -726,7 +780,7 @@ def load_store(payload, imported=False):
                 _flag(settings.get("emailAlerts")),
                 _flag(settings.get("twoFactor")),
                 str(settings.get("sessionTimeout") if settings.get("sessionTimeout") is not None else "30"),
-                int(payload.get("version") or 2),
+                _as_int(payload.get("version") or 2, "backup version"),
                 payload.get("seededAt") or _now(),
                 1 if imported else 0,
             ),
@@ -734,33 +788,9 @@ def load_store(payload, imported=False):
     return dump_store()
 
 
-def append_activity(entry):
+def append_activity(entry, ip=None):
+    if not isinstance(entry, dict):
+        return False
     with _WRITE_LOCK, connect() as conn:
-        conn.execute(
-            """
-            INSERT INTO ActivityLog (
-                LogId, LoggedAt, ActorName, ActorRole, ActionType,
-                ModuleName, Details, Severity, IpAddress
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(LogId) DO UPDATE SET
-                LoggedAt = excluded.LoggedAt,
-                ActorName = excluded.ActorName,
-                ActorRole = excluded.ActorRole,
-                ActionType = excluded.ActionType,
-                ModuleName = excluded.ModuleName,
-                Details = excluded.Details,
-                Severity = excluded.Severity,
-                IpAddress = excluded.IpAddress
-            """,
-            (
-                entry.get("id") or f"LOG-{int(datetime.now().timestamp())}",
-                entry.get("ts") or _now(),
-                entry.get("user") or "",
-                entry.get("role") or "—",
-                entry.get("action") or "Update",
-                entry.get("module") or "",
-                entry.get("details") or "",
-                entry.get("severity") or "Info",
-                entry.get("ip") or "",
-            ),
-        )
+        conn.execute(_LOG_UPSERT, _activity_row(entry, ip=ip))
+    return True
