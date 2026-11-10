@@ -111,7 +111,12 @@ class _Conn:
 
     def executemany(self, statement, seq):
         statement = _adapt_sql(statement, self.postgres)
-        return self.raw.executemany(statement, seq)
+        rows = list(seq)
+        if self.postgres:
+            with self.raw.cursor() as cur:
+                cur.executemany(statement, rows)
+            return
+        return self.raw.executemany(statement, rows)
 
 
 @contextmanager
