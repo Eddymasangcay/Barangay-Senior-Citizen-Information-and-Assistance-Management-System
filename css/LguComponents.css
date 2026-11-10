@@ -220,13 +220,17 @@
   display: block;
   padding: 0;
   background: #fff;
+  overflow: hidden;
 }
 
 .id-card__scan {
   display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+  width: var(--id-w);
+  height: var(--id-h);
+  max-width: 100%;
+  max-height: var(--id-h);
+  object-fit: contain;
+  object-position: center;
 }
 
 @media screen {
@@ -643,27 +647,4 @@ html[data-theme="dark"] .skeleton::after {
   .bulk-bar,
   .theme-toggle,
   .skeleton { display: none !important; }
-
-  body.is-printing-ids * { visibility: hidden; }
-  body.is-printing-ids {
-    background: #fff !important;
-    margin: 0;
-  }
-  body.is-printing-ids .id-print-sheet,
-  body.is-printing-ids .id-print-sheet * { visibility: visible; }
-
-  body.is-printing-ids .id-print-sheet {
-    display: flex !important;
-    flex-wrap: wrap;
-    align-content: flex-start;
-    gap: 6mm;
-    position: static;
-    padding: 0;
-  }
-
-  body.is-printing-ids .id-card {
-    box-shadow: none;
-    page-break-inside: avoid;
-    break-inside: avoid;
-  }
 }

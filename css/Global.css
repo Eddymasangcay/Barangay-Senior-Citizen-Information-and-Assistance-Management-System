@@ -1568,4 +1568,5 @@ legend.form-section__title { float: left; width: 100%; }
   .content { max-width: none; padding: 0; }
   .card { box-shadow: none; break-inside: avoid; }
   .btn, .icon-btn { display: none !important; }
+  img { max-width: 100%; }
 }
