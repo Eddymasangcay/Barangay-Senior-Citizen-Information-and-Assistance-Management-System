@@ -34,6 +34,38 @@ PUBLIC_API = {
     "/api/activity",
 }
 
+OFFICE_PAGES = frozenset({
+    "Dashboard",
+    "ReportsAnalytics",
+    "SeniorRegistry",
+    "ProgramManagement",
+    "AssistanceManagement",
+    "AuditTrail",
+    "DatabaseBackup",
+})
+
+
+def _office_name(path):
+    name = path.strip("/")
+    if name.startswith("html/"):
+        name = name[5:]
+    if name.endswith(".html"):
+        name = name[:-5]
+    return name
+
+
+def _redirect_keep_query(path):
+    query = request.query_string.decode("utf-8")
+    if query:
+        return redirect(f"{path}?{query}")
+    return redirect(path)
+
+
+def _send_html(directory, filename):
+    response = send_from_directory(directory, filename)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
 
 def _origin_allowed():
     origin = request.headers.get("Origin")
@@ -52,8 +84,8 @@ def _require_login():
 def guard_request():
     if request.method in ("POST", "PUT", "PATCH", "DELETE") and not _origin_allowed():
         return jsonify(ok=False, errors={"form": "This request was blocked."}), 403
-    if request.path.startswith("/html/") and "user" not in session:
-        return redirect("/OfficeLanding.html")
+    if _office_name(request.path) in OFFICE_PAGES and "user" not in session:
+        return redirect("/OfficeLanding")
     if request.path.startswith("/api/") and request.path not in PUBLIC_API:
         blocked = _require_login()
         if blocked:
@@ -62,20 +94,15 @@ def guard_request():
 
 
 @app.get("/")
-def home():
-    return redirect("/OfficeLanding.html")
-
-
-@app.get("/Main.html")
-def login_page_legacy():
-    return redirect("/OfficeLanding.html")
+@app.get("/OfficeLanding")
+def login_page():
+    return _send_html(BASE_DIR, "OfficeLanding.html")
 
 
 @app.get("/OfficeLanding.html")
-def login_page():
-    response = send_from_directory(BASE_DIR, "OfficeLanding.html")
-    response.headers["Cache-Control"] = "no-store"
-    return response
+@app.get("/Main.html")
+def login_page_legacy():
+    return _redirect_keep_query("/OfficeLanding")
 
 
 @app.get("/css/<path:filename>")
@@ -93,12 +120,25 @@ def scripts(filename):
 
 
 @app.get("/html/<path:filename>")
-def pages(filename):
-    if not filename.endswith(".html"):
+def pages_legacy(filename):
+    name = _office_name(filename)
+    if name in OFFICE_PAGES:
+        return _redirect_keep_query(f"/{name}")
+    return ("Not found", 404)
+
+
+@app.get("/<name>")
+def office_page(name):
+    if name.endswith(".html"):
+        stem = name[:-5]
+        if stem == "OfficeLanding":
+            return _redirect_keep_query("/OfficeLanding")
+        if stem in OFFICE_PAGES:
+            return _redirect_keep_query(f"/{stem}")
         return ("Not found", 404)
-    response = send_from_directory(HTML_DIR, filename)
-    response.headers["Cache-Control"] = "no-store"
-    return response
+    if name not in OFFICE_PAGES:
+        return ("Not found", 404)
+    return _send_html(HTML_DIR, f"{name}.html")
 
 
 @app.post("/api/auth/login")

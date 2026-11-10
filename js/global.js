@@ -20,8 +20,7 @@
 
   const PAGE = document.body.dataset.page || '';
   const IS_LOGIN = PAGE === 'login';
-  const HTML_BASE = IS_LOGIN ? 'html/' : '';
-  const LOGIN_URL = IS_LOGIN ? 'OfficeLanding.html' : '../OfficeLanding.html';
+  const LOGIN_URL = '/OfficeLanding';
 
   const PUROKS = ['Purok 1', 'Purok 2', 'Purok 3', 'Purok 4', 'Purok 5', 'Purok 6', 'Purok 7'];
   const AGE_BRACKETS = ['60–64', '65–69', '70–74', '75–79', '80+'];
@@ -74,17 +73,17 @@
 
   const NAV = [
     { label: 'Overview', items: [
-      { page: 'dashboard', href: 'Dashboard.html', icon: 'fa-gauge-high', text: 'Dashboard' },
-      { page: 'reports', href: 'ReportsAnalytics.html', icon: 'fa-chart-pie', text: 'Reports & Analytics' }
+      { page: 'dashboard', href: '/Dashboard', icon: 'fa-gauge-high', text: 'Dashboard' },
+      { page: 'reports', href: '/ReportsAnalytics', icon: 'fa-chart-pie', text: 'Reports & Analytics' }
     ] },
     { label: 'Management', group: 'records', groupLabel: 'Records', groupIcon: 'fa-folder-open', items: [
-      { page: 'registry', href: 'SeniorRegistry.html', icon: 'fa-users', text: 'Senior Registry' },
-      { page: 'programs', href: 'ProgramManagement.html', icon: 'fa-calendar-check', text: 'Programs & Events' },
-      { page: 'assistance', href: 'AssistanceManagement.html', icon: 'fa-hand-holding-medical', text: 'Assistance', badge: 'pending' }
+      { page: 'registry', href: '/SeniorRegistry', icon: 'fa-users', text: 'Senior Registry' },
+      { page: 'programs', href: '/ProgramManagement', icon: 'fa-calendar-check', text: 'Programs & Events' },
+      { page: 'assistance', href: '/AssistanceManagement', icon: 'fa-hand-holding-medical', text: 'Assistance', badge: 'pending' }
     ] },
     { label: 'Administration', group: 'system', groupLabel: 'System & Security', groupIcon: 'fa-shield-halved', items: [
-      { page: 'audit', href: 'AuditTrail.html', icon: 'fa-clock-rotate-left', text: 'Audit Trail' },
-      { page: 'backup', href: 'DatabaseBackup.html', icon: 'fa-database', text: 'Backup & Settings' }
+      { page: 'audit', href: '/AuditTrail', icon: 'fa-clock-rotate-left', text: 'Audit Trail' },
+      { page: 'backup', href: '/DatabaseBackup', icon: 'fa-database', text: 'Backup & Settings' }
     ] }
   ];
 
@@ -1327,7 +1326,7 @@
 
     sidebar.innerHTML = `
       <div class="sidebar__brand">
-        <a class="brand" href="Dashboard.html" aria-label="BSCIAMS home">
+        <a class="brand" href="/Dashboard" aria-label="BSCIAMS home">
           <span class="brand__mark" aria-hidden="true"><i class="fa-solid fa-hand-holding-heart"></i></span>
           <span class="brand__text"><strong>BSCIAMS</strong><small>Barangay Senior Care</small></span>
         </a>
@@ -1402,7 +1401,7 @@
               <button type="button" class="link small" id="markAllRead">Mark all as read</button>
             </div>
             <div class="notif-list" id="notifList"></div>
-            <div class="notif-panel__foot"><a class="link small" href="AssistanceManagement.html">View assistance queue</a></div>
+            <div class="notif-panel__foot"><a class="link small" href="/AssistanceManagement">View assistance queue</a></div>
           </div>
         </div>
 
@@ -1418,9 +1417,9 @@
               <small>${esc(session.role)} · Signed in ${esc(relTime(session.loginAt).toLowerCase())}</small>
             </div>
             <div class="dropdown-menu">
-              <a class="dropdown-item" href="Dashboard.html"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i>Dashboard</a>
-              <a class="dropdown-item" href="DatabaseBackup.html#settings"><i class="fa-solid fa-gear" aria-hidden="true"></i>System settings</a>
-              <a class="dropdown-item" href="AuditTrail.html"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>Activity log</a>
+              <a class="dropdown-item" href="/Dashboard"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i>Dashboard</a>
+              <a class="dropdown-item" href="/DatabaseBackup#settings"><i class="fa-solid fa-gear" aria-hidden="true"></i>System settings</a>
+              <a class="dropdown-item" href="/AuditTrail"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>Activity log</a>
               <div class="dropdown-divider"></div>
               <button type="button" class="dropdown-item dropdown-item--danger" data-action="logout"><i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i>Sign out</button>
             </div>
@@ -1450,17 +1449,17 @@
 
     const seniorHits = seniors.filter((s) => `${s.firstName} ${s.middleName} ${s.lastName} ${s.oscaId} ${s.purok}`.toLowerCase().includes(q))
       .slice(0, 5)
-      .map((s) => ({ group: 'Seniors', icon: 'fa-user', title: displayName(s), meta: `${s.oscaId} · ${s.purok} · ${ageOf(s.birthdate)} yrs`, href: `SeniorRegistry.html?view=${encodeURIComponent(s.id)}` }));
+      .map((s) => ({ group: 'Seniors', icon: 'fa-user', title: displayName(s), meta: `${s.oscaId} · ${s.purok} · ${ageOf(s.birthdate)} yrs`, href: `/SeniorRegistry?view=${encodeURIComponent(s.id)}` }));
 
     const programHits = DB.all('programs').filter((p) => `${p.title} ${p.venue} ${p.type}`.toLowerCase().includes(q))
       .slice(0, 4)
-      .map((p) => ({ group: 'Programs', icon: PROGRAM_ICONS[p.type] || 'fa-calendar', title: p.title, meta: `${p.type} · ${fmtDate(p.date)} · ${programStatus(p)}`, href: `ProgramManagement.html?open=${encodeURIComponent(p.id)}` }));
+      .map((p) => ({ group: 'Programs', icon: PROGRAM_ICONS[p.type] || 'fa-calendar', title: p.title, meta: `${p.type} · ${fmtDate(p.date)} · ${programStatus(p)}`, href: `/ProgramManagement?open=${encodeURIComponent(p.id)}` }));
 
     const aidHits = DB.all('assistance').filter((a) => {
       const s = byId.get(a.seniorId);
       return `${a.id} ${a.type} ${a.status} ${s ? displayName(s) : ''}`.toLowerCase().includes(q);
     }).slice(0, 4)
-      .map((a) => ({ group: 'Assistance requests', icon: AID_ICONS[a.type] || 'fa-hand-holding-medical', title: `${a.id} · ${a.type}`, meta: `${displayName(byId.get(a.seniorId))} · ${fmtMoney(a.amount)} · ${a.status}`, href: `AssistanceManagement.html?request=${encodeURIComponent(a.id)}` }));
+      .map((a) => ({ group: 'Assistance requests', icon: AID_ICONS[a.type] || 'fa-hand-holding-medical', title: `${a.id} · ${a.type}`, meta: `${displayName(byId.get(a.seniorId))} · ${fmtMoney(a.amount)} · ${a.status}`, href: `/AssistanceManagement?request=${encodeURIComponent(a.id)}` }));
 
     return [...seniorHits, ...programHits, ...aidHits];
   }
@@ -1537,7 +1536,7 @@
         title: `Pending ${a.type.toLowerCase()} request`,
         text: `${displayName(byId.get(a.seniorId))} · ${fmtMoney(a.amount)}`,
         when: relTime(a.requestedAt), sort: new Date(a.requestedAt).getTime(),
-        href: `AssistanceManagement.html?request=${encodeURIComponent(a.id)}`
+        href: `/AssistanceManagement?request=${encodeURIComponent(a.id)}`
       });
     });
 
@@ -1548,7 +1547,7 @@
         id: `prog-${p.id}-${p.date}`, icon: PROGRAM_ICONS[p.type], tone: 'violet',
         title: p.title, text: `${fmtDate(p.date, { weekday: 'short', month: 'short', day: 'numeric' })} · ${p.venue}`,
         when: days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : `In ${days} days`, sort: Date.now() - days * 1000,
-        href: `ProgramManagement.html?open=${encodeURIComponent(p.id)}`
+        href: `/ProgramManagement?open=${encodeURIComponent(p.id)}`
       });
     });
 
@@ -1563,7 +1562,7 @@
         id: `bday-${s.id}-${next.getFullYear()}`, icon: 'fa-cake-candles', tone: 'approved',
         title: `Birthday: ${displayName(s)}`, text: `Turns ${turning} on ${fmtDate(toISODate(next), { month: 'short', day: 'numeric' })}`,
         when: days === 0 ? 'Today' : `In ${days} day${days > 1 ? 's' : ''}`, sort: Date.now() - days * 1000 - 500,
-        href: `SeniorRegistry.html?view=${encodeURIComponent(s.id)}`
+        href: `/SeniorRegistry?view=${encodeURIComponent(s.id)}`
       });
     });
 
@@ -1575,7 +1574,7 @@
           id: `sec-${failed[0].id}`, icon: 'fa-shield-halved', tone: 'alert',
           title: `${failed.length} failed sign-in attempt${failed.length > 1 ? 's' : ''}`, text: 'In the last 24 hours. Review the audit trail.',
           when: relTime(failed[0].ts), sort: new Date(failed[0].ts).getTime(),
-          href: 'AuditTrail.html?action=Failed%20Login'
+          href: '/AuditTrail?action=Failed%20Login'
         });
       }
     }
@@ -1742,7 +1741,7 @@
         Session._cache = null;
       } else {
         if (!samePerson) Session.start(remote, true);
-        location.replace('html/Dashboard.html');
+        location.replace('/Dashboard');
         return;
       }
     } else if (existing) {
@@ -1815,7 +1814,7 @@
       localStorage.setItem(LAST_USER_KEY, result.user.username);
       DB.log('Login', 'Authentication', `${result.user.name} signed in as ${result.user.role}`);
       flash(`Signed in as ${result.user.role}.`, 'success', `Welcome, ${result.user.name.split(' ')[0]}!`);
-      location.href = 'html/Dashboard.html';
+      location.href = '/Dashboard';
     });
   };
 
@@ -1849,7 +1848,7 @@
       const d = parseDate(p.date);
       return `
         <li>
-          <a class="event-item" href="ProgramManagement.html?open=${encodeURIComponent(p.id)}">
+          <a class="event-item" href="/ProgramManagement?open=${encodeURIComponent(p.id)}">
             <span class="event-item__date"><small>${d.toLocaleDateString('en-PH', { month: 'short' })}</small><strong>${d.getDate()}</strong></span>
             <span class="event-item__body">
               <strong>${esc(p.title)}</strong>
@@ -2325,7 +2324,7 @@
                   ${badge(a.status)}
                 </li>`).join('')}
             </ul>
-            ${requests.length > 6 ? `<a class="link small mt-2" style="display:inline-block" href="AssistanceManagement.html?senior=${encodeURIComponent(s.id)}">View all ${requests.length} requests</a>` : ''}`
+            ${requests.length > 6 ? `<a class="link small mt-2" style="display:inline-block" href="/AssistanceManagement?senior=${encodeURIComponent(s.id)}">View all ${requests.length} requests</a>` : ''}`
             : '<p class="muted">No assistance requests yet.</p>'}
         </section>
 
@@ -2337,7 +2336,7 @@
       $('#profileEdit').onclick = () => { if (can('senior.write')) openForm(s); };
       $('#profileEdit').disabled = !can('senior.write');
       $('#profilePrintId').onclick = () => printIdCards([s]);
-      $('#profileRequest').href = `AssistanceManagement.html?action=new&senior=${encodeURIComponent(s.id)}`;
+      $('#profileRequest').href = `/AssistanceManagement?action=new&senior=${encodeURIComponent(s.id)}`;
       Modal.open('profileDrawer');
     }
 
